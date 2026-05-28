@@ -436,7 +436,7 @@
     <div class="hotel-info">
       <div class="hotel-name">普拉辛格床酒店（仅成人）</div>
       <div class="hotel-addr">📍 古城内，Ratchamanka 路</div>
-      <div class="hotel-meta">🚖 距机场约 12 分钟 · 距火车站约 18 分钟 · 🚶 步行可达周日夜市起点（塔佩门）</div>
+      <div class="hotel-meta">🚖 距机场约 12 分钟 · 距火车站约 18 分钟</div>
     </div>
   </div>
 
@@ -493,6 +493,14 @@
     <textarea id="editTips" placeholder="出机场换少量泰铢即可，市区汇率更好&#10;Grab 打车去古城，约 150 铢"></textarea>
   </div>
 
+  <div class="form-group">
+    <label>距酒店时间 <span style="font-weight:400;color:#aaa;font-size:12px">（选填，不填则自动识别地点）</span></label>
+    <div style="display:flex;gap:8px">
+      <input type="number" id="editWalk" placeholder="步行分钟" min="1" max="120" style="flex:1">
+      <input type="number" id="editBike" placeholder="摩托分钟" min="1" max="180" style="flex:1">
+    </div>
+  </div>
+
   <div class="btn-row">
     <button class="btn btn-secondary" id="btnCancel">取消</button>
     <button class="btn btn-primary" id="btnSave">保存</button>
@@ -523,32 +531,101 @@ const CATEGORY_MAP = {
 // 初始数据
 let itinerary = {
   '2026-06-21': [
-    { time: '10:10', title: 'MU205 上海 → 清迈', category: 'transport', desc: '上海浦东 T1 出发，预计 13:25 抵达清迈国际机场', tips: [
+    { time: '10:10', title: 'MU205 上海 → 清迈', category: 'transport', desc: '上海浦东 T1 出发，预计 13:25 抵达清迈国际机场', dist: { bike: 15 }, tips: [
       '出机场换少量泰铢够当天用即可，市区汇率更好',
       'Grab 或 Bolt 打车去古城，约 150-200 铢',
-      '入住后先熟悉周边，不要赶行程',
-      '傍晚步行去 Tha Phae 门，顺路买些小食',
     ]},
-    { time: '17:00', title: '周日夜市（Sunday Walking Street）', category: 'market', desc: '17:00 开市，22:00 收摊，周六日规模较大\n塔佩门(Tha Phae Gate) → 帕辛寺(Wat Phra Singh)', tips: [
+    { time: '17:00', title: '周日夜市（Sunday Walking Street）', category: 'market', desc: '17:00 开市，22:00 收摊，周六日规模较大\n塔佩门(Tha Phae Gate) → 帕辛寺(Wat Phra Singh)', dist: { walk: 8, bike: 5 }, tips: [
       '主街 + 两侧寺庙空地的小吃摊',
-      '建议吃饱了再去，或者留肚子一路吃过去',
+      '最热闹的传统夜市，手工艺品、小吃、按摩都有',
     ]},
   ],
   '2026-06-22': [],
   '2026-06-23': [
-    { time: '08:30', title: 'Teetee Elephant（大象营）+ 蓝庙 + 粘粘瀑布', category: 'activity', desc: '📍 集合地点：民宿\n全天包车（Teetee 全包）\n• 08:30 接人 → 大象散步 → 蓝庙 → 粘粘瀑布\n• 预计 16:30 送回民宿\n✅ 含交通、导游、午餐、门票' },
+    { time: '08:30', title: 'Teetee Elephant（大象营）', category: 'activity', desc: '集合地点：民宿\nTeetee Elephant 全包：接人 → 大象互动+散步，含交通、导游、午餐、门票', dist: { bike: 50 }, tips: [
+      '穿便于活动的衣服，自备防晒和驱蚊',
+    ]},
+    { time: '13:00', title: '蓝庙（Wat Rong Suea Ten）', category: 'activity', desc: '清迈市区南部，距古城约 30 分钟车程\n深蓝色外墙和精细木雕，游览约 30-40 分钟', dist: { bike: 30 }, tips: [
+      '着装要求：遮盖肩膀和膝盖（不能穿无袖、短裤/短裙）',
+      '室内可拍照，请保持安静',
+    ]},
+    { time: '14:30', title: '粘粘瀑布（Bua Tha Waterfall）', category: 'activity', desc: '距清迈约 30km，山林公园\n石灰华表面有特殊苔藓而"粘脚"，可攀爬上下，游览约 1-1.5 小时', dist: { bike: 45 }, tips: [
+      '穿防滑水鞋或拖鞋（现场可租借），赤脚也可',
+      '水温较低，注意浸泡时间',
+      '建议带一套换洗衣物',
+    ]},
+    { time: '16:30', title: '返回民宿（包车送回）', category: 'transport', desc: '包车送回民宿，当日行程结束', dist: { bike: 45 }},
   ],
   '2026-06-24': [
-    { time: '19:00', title: 'North Gate Jazz Co-Op 🎷', category: 'activity', desc: '📍 Sri Poom Rd，North Gate 旁（昌普门）\n🎷 小卷毛约 21:30 出场\n• 想坐好位子 → 19:30 前到，也可和老外拼桌\n• 不在乎座位 → 站着听，门口也能听\n• 每晚 19:00-00:00 有现场 Jazz，免费入场，消费制' },
+    { time: '19:00', title: 'North Gate Jazz Co-Op', category: 'activity', desc: 'Sri Poom Rd，North Gate 旁（昌普门）\n每晚 19:00-00:00 现场 Jazz，免费入场，消费制', dist: { walk: 12, bike: 8 }, tips: [
+      '小卷毛约 21:30 出场，想坐好位子 19:30 前到，也可和老外拼桌',
+      '不在乎座位站着听，门口也能听',
+    ]},
   ],
   '2026-06-25': [
-    { time: '14:55', title: 'MU206 清迈 → 上海', category: 'transport', desc: '清迈国际机场出发，预计 20:00 抵达上海浦东 T1\n⚠️ 建议提前 2.5 小时到机场（国际航班值机+安检）', tips: [
+    { time: '14:55', title: 'MU206 清迈 → 上海', category: 'transport', desc: '清迈国际机场出发，预计 20:00 抵达上海浦东 T1\n⚠️ 建议提前 2.5 小时到机场（国际航班值机+安检）', dist: { bike: 12 }, tips: [
       '建议提前 2.5 小时到机场（国际航班）',
       '清迈机场不大，办理值机后还有时间逛机场小店',
       '带好护照和出境卡',
     ]},
   ],
 };
+
+// ─── 距离 ───
+// 每个地点到酒店的时间，walk=步行分钟，bike=摩托车分钟
+// 30分钟以内步行两者都显示，超过只显示摩托车时间
+const DIST_FROM_HOTEL = {
+  airport:     { walk: null, bike: 12, label: '机场' },
+  station:     { walk: null, bike: 18, label: '火车站' },
+  thatphae:    { walk: 8,  bike: 5,  label: '塔佩门' },
+  sundaymarket:{ walk: 8,  bike: 5,  label: '周日夜市' },
+  nightbazaar: { walk: 25, bike: 10, label: 'Night Bazaar' },
+  northgate:   { walk: 12, bike: 8,  label: 'North Gate' },
+  elephant:    { walk: null, bike: 50, label: '大象营' },
+  bluetemple:  { walk: null, bike: 30, label: '蓝庙' },
+  waterfall:   { walk: null, bike: 45, label: '粘粘瀑布' },
+};
+
+function formatDist(dist) {
+  if (!dist) return '';
+  if (dist.walk && dist.bike) {
+    return `步行 ${dist.walk} 分钟 / 摩托 ${dist.bike} 分钟`;
+  }
+  return `摩托 ${dist.bike} 分钟`;
+}
+
+// 根据行程描述匹配距离
+function guessDist(item) {
+  const t = item.title + (item.desc || '');
+  const d = item.dist;
+  if (d) return formatDist(d);
+  // 关键词匹配
+  if (/机场|MU205|MU206/.test(t)) return formatDist(DIST_FROM_HOTEL.airport);
+  if (/火车站|train/.test(t)) return formatDist(DIST_FROM_HOTEL.station);
+  if (/Tha Phae|塔佩门|周日夜市|Sunday Walking/.test(t)) return formatDist(DIST_FROM_HOTEL.sundaymarket);
+  if (/Night Bazaar|night.?bazaar/i.test(t)) return formatDist(DIST_FROM_HOTEL.nightbazaar);
+  if (/North Gate|爵士|Jazz/.test(t)) return formatDist(DIST_FROM_HOTEL.northgate);
+  if (/大象营|Elephant/.test(t)) return formatDist(DIST_FROM_HOTEL.elephant);
+  if (/蓝庙|Wat Rong|Bluetemple/i.test(t)) return formatDist(DIST_FROM_HOTEL.bluetemple);
+  if (/瀑布|Waterfall/.test(t)) return formatDist(DIST_FROM_HOTEL.waterfall);
+  return '';
+}
+
+// 每天概览距离：当天第一个行程 → 酒店（去程），最后一个行程 → 酒店（回程）
+function getDayDistSummary(items) {
+  if (!items || items.length === 0) return '';
+  const sorted = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+  const first = sorted[0];
+  const last  = sorted[sorted.length - 1];
+  const firstDist = guessDist(first);
+  const lastDist  = guessDist(last);
+  if (!firstDist && !lastDist) return '';
+  if (first === last) return firstDist ? `距酒店 ${firstDist}` : '';
+  const parts = [];
+  if (firstDist) parts.push(`去程 ${firstDist}`);
+  if (lastDist)  parts.push(`回程 ${lastDist}`);
+  return parts.join(' · ');
+}
 
 // ─── 渲染 ───
 function render() {
@@ -585,7 +662,7 @@ function renderDayContent(day, items) {
   let html = `<div class="day-label">${day.label} · ${day.weekday}</div>`;
 
   // Market info for relevant days
-  html += renderMarketInfo(day.date);
+  html += renderMarketInfo(day.date, items);
 
   // Items
   if (items.length === 0) {
@@ -598,16 +675,16 @@ function renderDayContent(day, items) {
     const sorted = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     sorted.forEach(item => {
       const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.info;
-      const isArrival = item.title.includes('→') && item.title.includes('清迈');
+      const isArrival = item.title.includes('→') && item.title.includes('清迈') && !item.title.includes('上海');
       const isDeparture = item.title.includes('→') && item.title.includes('上海');
-      const tipsTitle = isDeparture ? '✈️ 返程小贴士' : '💡 小贴士';
+      const tipsTitle = isDeparture ? '✈️ 返程小贴士' : (isArrival ? '💡 落地小贴士' : '💡 小贴士');
       html += `
         <div class="timeline-item type-${item.category}">
           <div class="item-header">
             <span class="item-time">${item.time || '—'}</span>
             <span class="item-title">${item.title}</span>
           </div>
-          ${item.desc ? `<div class="item-desc">${item.desc}</div>` : ''}
+          ${item.desc ? `<div class="item-desc">${item.desc.replace(/\n/g, '<br>')}</div>` : ''}
           <span class="item-tag ${cat.tag}">${cat.label}</span>
         </div>
         ${item.tips ? `<div class="tips-card"><h4>${tipsTitle}</h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
@@ -617,58 +694,36 @@ function renderDayContent(day, items) {
   return html;
 }
 
-function renderMarketInfo(date) {
+function renderMarketInfo(date, items) {
+  const distLine = getDayDistSummary(items);
   const markets = {
     '2026-06-21': `
       <div class="market-info">
-        <h4>🎑 周日步行街 Night Market</h4>
-        <p>Tha Phae Walking Street — 约 17:00-22:00<br>
-        古城东侧 Tha Phae 门开始，最热闹的传统夜市，手工艺品、小吃、按摩都有。下午到傍晚去正好！</p>
+        <h4>🏍️ 6月21日 · 到达日</h4>
+        <p>上午出发 → 下午抵达 → 傍晚逛周日夜市${distLine ? '<br>' + distLine : ''}</p>
       </div>`,
     '2026-06-22': `
       <div class="market-info">
         <h4>💡 周一无大型市集</h4>
-        <p>工作日清迈市集大多休息。可以安排白天活动（烹饪课、寺庙、咖啡店）或晚上逛 Night Bazaar。</p>
+        <p>工作日清迈市集大多休息，可安排白天活动或晚上逛 Night Bazaar${distLine ? '<br>' + distLine : ''}</p>
       </div>`,
     '2026-06-23': `
       <div class="market-info">
-        <h4>🚌 6/23 全天包车（大象营日）</h4>
-        <p>Teetee Elephant 全包：08:30 接 → 大象散步 → 蓝庙 → 粘粘瀑布 → 约 16:30 送回。<br>
-        晚上回古城自由活动，可逛 Night Bazaar 或休息。</p>
+        <h4>🚌 6月23日 · 包车日</h4>
+        <p>08:30 大象营 → 13:00 蓝庙 → 14:30 粘粘瀑布 → 约 16:30 回民宿${distLine ? '<br>' + distLine : ''}</p>
       </div>`,
     '2026-06-24': `
       <div class="market-info">
-        <h4>🎷 周三夜：North Gate Jazz Co-Op</h4>
-        <p>清迈最有名的现场爵士乐酒吧，每晚 19:00-00:00 演出。已加入行程（见下方）。</p>
-      </div>`,
-    '2026-06-25': ``,
-  };
-  return markets[date] || '';
-}
-
-function renderTips(date) {
-  const tips = {
-    '2026-06-21': `
-      <div class="tips-card">
-        <h4>💡 落地小贴士</h4>
-        <ul>
-          <li>出机场换少量泰铢够当天用即可，市区汇率更好</li>
-          <li>Grab 或 Bolt 打车去古城，约 150-200 铢</li>
-          <li>入住后先熟悉周边，不要赶行程</li>
-          <li>傍晚步行去 Tha Phae 门，顺路买些小食</li>
-        </ul>
+        <h4>🎷 6月24日 · 古城夜</h4>
+        <p>19:00 North Gate Jazz${distLine ? '<br>' + distLine : ''}</p>
       </div>`,
     '2026-06-25': `
-      <div class="tips-card">
-        <h4>✈️ 返程小贴士</h4>
-        <ul>
-          <li>建议提前 2.5 小时到机场（国际航班）</li>
-          <li>清迈机场不大，办理值机后还有时间逛机场小店</li>
-          <li>带好护照和出境卡</li>
-        </ul>
+      <div class="market-info">
+        <h4>✈️ 6月25日 · 返程日</h4>
+        <p>${distLine || '酒店 → 机场'}</p>
       </div>`,
   };
-  return tips[date] || '';
+  return markets[date] || '';
 }
 
 function switchDay(date) {
@@ -773,13 +828,18 @@ function saveItem() {
   if (!itinerary[date]) itinerary[date] = [];
   const tipsRaw = document.getElementById('editTips').value.trim();
   const tips = tipsRaw ? tipsRaw.split('\n').map(t => t.trim()).filter(Boolean) : [];
-  itinerary[date].push({ time, title, category: currentEditCat, desc, tips: tips.length ? tips : undefined });
+  const walk = parseInt(document.getElementById('editWalk').value);
+  const bike = parseInt(document.getElementById('editBike').value);
+  const dist = (walk || bike) ? { walk: walk || null, bike: bike || null } : undefined;
+  itinerary[date].push({ time, title, category: currentEditCat, desc, tips: tips.length ? tips : undefined, dist });
 
   // Reset form
   document.getElementById('editTime').value = '';
   document.getElementById('editTitle').value = '';
   document.getElementById('editDesc').value = '';
   document.getElementById('editTips').value = '';
+  document.getElementById('editWalk').value = '';
+  document.getElementById('editBike').value = '';
 
   render();
   // Re-open panel to show updated list
