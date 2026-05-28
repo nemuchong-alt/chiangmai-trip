@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>清迈行程 · 6月21-25日</title>
+<style>
+  :root {
+    --bg: #faf9f7;
+    --card: #ffffff;
+    --text: #2d2d2d;
+    --text-light: #888;
+    --accent: #e07a5f;
+    --accent-light: #fef0ec;
+    --teal: #3d8b8b;
+    --teal-light: #e8f4f4;
+    --purple: #7b5ea7;
+    --purple-light: #f3eef8;
+    --yellow: #f4a259;
+    --yellow-light: #fef5e7;
+    --green: #5a9a6e;
+    --green-light: #eaf5ec;
+    --border: #eee;
+    --radius: 14px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.06);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    padding-bottom: 80px;
+  }
+
+  /* Header */
+  .header {
+    background: var(--card);
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .header-sub {
+    font-size: 12px;
+    color: var(--text-light);
+    margin-top: 2px;
+  }
+
+  /* Day Tabs */
+  .day-tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .day-tabs::-webkit-scrollbar { display: none; }
+  .day-tab {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1.5px solid transparent;
+    background: var(--bg);
+    color: var(--text-light);
+    white-space: nowrap;
+  }
+  .day-tab.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .day-tab.has-content::after {
+    content: '';
+    display: inline-block;
+    width: 5px;
+    height: 5px;
+    background: var(--teal);
+    border-radius: 50%;
+    margin-left: 5px;
+    vertical-align: middle;
+  }
+  .day-tab.active.has-content::after {
+    background: rgba(255,255,255,0.7);
+  }
+
+  /* Day Label */
+  .day-label {
+    font-size: 13px;
+    color: var(--text-light);
+    padding: 16px 20px 8px;
+    font-weight: 500;
+  }
+
+  /* Timeline */
+  .timeline {
+    padding: 0 16px 16px;
+    position: relative;
+  }
+
+  .timeline-item {
+    background: var(--card);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    box-shadow: var(--shadow);
+    border-left: 4px solid var(--accent);
+    position: relative;
+  }
+  .timeline-item.type-transport { border-left-color: var(--teal); }
+  .timeline-item.type-food { border-left-color: var(--yellow); }
+  .timeline-item.type-market { border-left-color: var(--purple); }
+  .timeline-item.type-activity { border-left-color: var(--green); }
+  .timeline-item.type-info { border-left-color: #aaa; }
+
+  .item-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .item-time {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-light);
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .item-title {
+    font-size: 15px;
+    font-weight: 600;
+    flex: 1;
+    line-height: 1.4;
+  }
+  .item-desc {
+    font-size: 13px;
+    color: var(--text-light);
+    line-height: 1.6;
+    margin-top: 4px;
+  }
+  .item-tag {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 8px;
+    margin-right: 4px;
+    margin-top: 4px;
+  }
+  .tag-transport { background: var(--teal-light); color: var(--teal); }
+  .tag-food { background: var(--yellow-light); color: var(--yellow); }
+  .tag-market { background: var(--purple-light); color: var(--purple); }
+  .tag-activity { background: var(--green-light); color: var(--green); }
+  .tag-info { background: #f0f0f0; color: #888; }
+
+  .empty-day {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-light);
+    font-size: 14px;
+  }
+  .empty-day svg { margin-bottom: 10px; opacity: 0.4; }
+
+  /* Section divider */
+  .section-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 16px 6px;
+  }
+
+  /* Market card */
+  .market-info {
+    background: var(--purple-light);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin: 0 16px 10px;
+    border: 1px solid #e8e0f5;
+  }
+  .market-info h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--purple);
+    margin-bottom: 4px;
+  }
+  .market-info p {
+    font-size: 13px;
+    color: #6a5a7a;
+    line-height: 1.5;
+  }
+
+  /* Tips */
+  .tips-card {
+    background: var(--green-light);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin: 0 16px 10px;
+    border: 1px solid #d0e8d4;
+  }
+  .tips-card h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--green);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tips-card ul {
+    font-size: 13px;
+    color: #4a7a5a;
+    padding-left: 16px;
+    line-height: 1.8;
+  }
+
+  /* Edit FAB */
+  .fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(224, 122, 95, 0.4);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s;
+  }
+  .fab:active { transform: scale(0.95); }
+
+  /* Edit mode */
+  .edit-panel {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--card);
+    border-radius: 20px 20px 0 0;
+    padding: 24px 20px 40px;
+    z-index: 300;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.1);
+    max-height: 85dvh;
+    overflow-y: auto;
+  }
+  .edit-panel.active { display: block; }
+  .edit-panel h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--text);
+  }
+  .edit-panel .form-group {
+    margin-bottom: 14px;
+  }
+  .edit-panel label {
+    font-size: 12px;
+    color: var(--text-light);
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+  .edit-panel input,
+  .edit-panel select,
+  .edit-panel textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    background: var(--bg);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .edit-panel input:focus,
+  .edit-panel select:focus,
+  .edit-panel textarea:focus {
+    border-color: var(--accent);
+  }
+  .edit-panel textarea { resize: vertical; min-height: 60px; }
+  .edit-panel .btn-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+  }
+  .edit-panel .btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+  }
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-secondary { background: var(--bg); color: var(--text); border: 1.5px solid var(--border); }
+  .edit-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 299;
+  }
+  .edit-overlay.active { display: block; }
+
+  /* Edit item in list */
+  .edit-item-row {
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .edit-item-row span { font-size: 13px; flex: 1; }
+  .edit-item-row .del-btn {
+    background: none;
+    border: none;
+    color: #e07a5f;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  /* Category picker */
+  .category-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .cat-option {
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    cursor: pointer;
+    border: 1.5px solid var(--border);
+    background: var(--bg);
+    color: var(--text-light);
+    transition: all 0.15s;
+  }
+  .cat-option.selected { border-color: currentColor; }
+  .cat-option[data-cat="transport"].selected { border-color: var(--teal); background: var(--teal-light); color: var(--teal); }
+  .cat-option[data-cat="food"].selected { border-color: var(--yellow); background: var(--yellow-light); color: var(--yellow); }
+  .cat-option[data-cat="market"].selected { border-color: var(--purple); background: var(--purple-light); color: var(--purple); }
+  .cat-option[data-cat="activity"].selected { border-color: var(--green); background: var(--green-light); color: var(--green); }
+  .cat-option[data-cat="info"].selected { border-color: #aaa; background: #f5f5f5; color: #666; }
+
+  /* Source footer */
+  .source-bar {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    margin-top: 8px;
+  }
+  .source-bar p {
+    font-size: 11px;
+    color: #bbb;
+    line-height: 1.6;
+  }
+  .source-bar a { color: #ccc; }
+
+  /* Day content */
+  .day-content { display: none; }
+  .day-content.active { display: block; }
+
+  /* Hotel card */
+  .hotel-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(135deg, var(--accent-light), #fff);
+    border: 1.5px solid #f0d8d2;
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin: 12px 16px 4px;
+  }
+  .hotel-icon { font-size: 28px; flex-shrink: 0; }
+  .hotel-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .hotel-addr { font-size: 12px; color: var(--text-light); margin-top: 2px; }
+  .hotel-meta { font-size: 11px; color: var(--text-light); margin-top: 4px; line-height: 1.5; }
+
+  @media (min-width: 600px) {
+    .container { max-width: 560px; margin: 0 auto; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header class="header">
+    <div class="header-top">
+      <div>
+        <h1>清迈 · 6月21-25日</h1>
+        <div class="header-sub">5天4晚 · 共<span id="item-count">0</span>项安排</div>
+      </div>
+    </div>
+    <div class="day-tabs" id="dayTabs"></div>
+  </header>
+
+  <div class="hotel-card">
+    <div class="hotel-icon">🏨</div>
+    <div class="hotel-info">
+      <div class="hotel-name">普拉辛格床酒店（仅成人）</div>
+      <div class="hotel-addr">📍 古城内，Ratchamanka 路</div>
+      <div class="hotel-meta">🚖 距机场约 12 分钟 · 距火车站约 18 分钟 · 🚶 步行可达周日夜市起点（塔佩门）</div>
+    </div>
+  </div>
+
+  <div id="dayContents"></div>
+
+  <div class="source-bar">
+    <p>集市/夜市时间参考：清迈市政 tourismthailand.org chiangmai.go.th<br>
+    实际营业时间可能有变动，建议出发前再确认。</p>
+  </div>
+</div>
+
+<button class="fab" id="fabAdd" title="添加安排">+</button>
+
+<!-- Edit Overlay -->
+<div class="edit-overlay" id="editOverlay"></div>
+
+<!-- Edit Panel -->
+<div class="edit-panel" id="editPanel">
+  <h3 id="editPanelTitle">添加安排</h3>
+
+  <div class="form-group">
+    <label>日期</label>
+    <select id="editDay"></select>
+  </div>
+
+  <div class="form-group">
+    <label>时间</label>
+    <input type="time" id="editTime" placeholder="如 09:00">
+  </div>
+
+  <div class="form-group">
+    <label>标题</label>
+    <input type="text" id="editTitle" placeholder="做什么？">
+  </div>
+
+  <div class="form-group">
+    <label>类型</label>
+    <div class="category-picker">
+      <div class="cat-option" data-cat="transport">交通</div>
+      <div class="cat-option" data-cat="food">美食</div>
+      <div class="cat-option" data-cat="market">市集</div>
+      <div class="cat-option" data-cat="activity">活动</div>
+      <div class="cat-option selected" data-cat="info">备注</div>
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>备注 / Tips</label>
+    <textarea id="editDesc" placeholder="地点、预约方式、注意事项……"></textarea>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-secondary" id="btnCancel">取消</button>
+    <button class="btn btn-primary" id="btnSave">保存</button>
+  </div>
+
+  <div class="section-title" style="margin-top: 20px;">已有安排</div>
+  <div id="editItemList"></div>
+</div>
+
+<script>
+// ─── 数据模型 ───
+const DAYS = [
+  { date: '2026-06-21', label: '6月21日', weekday: '周日' },
+  { date: '2026-06-22', label: '6月22日', weekday: '周一' },
+  { date: '2026-06-23', label: '6月23日', weekday: '周二' },
+  { date: '2026-06-24', label: '6月24日', weekday: '周三' },
+  { date: '2026-06-25', label: '6月25日', weekday: '周四' },
+];
+
+const CATEGORY_MAP = {
+  transport: { label: '交通', color: 'var(--teal)', bg: 'var(--teal-light)', tag: 'tag-transport' },
+  food:     { label: '美食', color: 'var(--yellow)', bg: 'var(--yellow-light)', tag: 'tag-food' },
+  market:   { label: '市集', color: 'var(--purple)', bg: 'var(--purple-light)', tag: 'tag-market' },
+  activity: { label: '活动', color: 'var(--green)', bg: 'var(--green-light)', tag: 'tag-activity' },
+  info:     { label: '备注', color: '#888', bg: '#f0f0f0', tag: 'tag-info' },
+};
+
+// 初始数据
+let itinerary = {
+  '2026-06-21': [
+    { time: '10:10', title: 'MU205 上海 → 清迈', category: 'transport', desc: '上海浦东 T1 出发，预计 13:25 抵达清迈国际机场' },
+    { time: '17:00', title: '周日夜市（Sunday Walking Street）', category: 'market', desc: '塔佩门(Tha Phae Gate) → 帕辛寺(Wat Phra Singh) 全程\n• 主街 + 两侧寺庙空地的小吃摊\n• 17:00 开市，22:00 收摊，规模周六日都大\n• 建议吃饱了再去，或者留肚子一路吃过去' },
+  ],
+  '2026-06-22': [],
+  '2026-06-23': [
+    { time: '08:30', title: 'Teetee Elephant（大象营）+ 蓝庙 + 粘粘瀑布', category: 'activity', desc: '📍 集合地点：民宿\n全天包车（Teetee 全包）\n• 08:30 接人 → 大象散步 → 蓝庙 → 粘粘瀑布\n• 预计 16:30 送回民宿\n✅ 含交通、导游、午餐、门票' },
+  ],
+  '2026-06-24': [
+    { time: '19:00', title: 'North Gate Jazz Co-Op 🎷', category: 'activity', desc: '📍 Sri Poom Rd，North Gate 旁（昌普门）\n🎷 小卷毛约 21:30 出场\n• 想坐好位子 → 19:30 前到，也可和老外拼桌\n• 不在乎座位 → 站着听，门口也能听\n• 每晚 19:00-00:00 有现场 Jazz，免费入场，消费制' },
+  ],
+  '2026-06-25': [
+    { time: '14:55', title: 'MU206 清迈 → 上海', category: 'transport', desc: '清迈国际机场出发，预计 20:00 抵达上海浦东 T1\n⚠️ 建议提前 2.5 小时到机场（国际航班值机+安检）' },
+  ],
+};
+
+// ─── 渲染 ───
+function render() {
+  const tabs = document.getElementById('dayTabs');
+  const contents = document.getElementById('dayContents');
+  tabs.innerHTML = '';
+  contents.innerHTML = '';
+
+  DAYS.forEach((day, i) => {
+    const items = itinerary[day.date] || [];
+    const hasContent = items.length > 0;
+
+    // Tab
+    const tab = document.createElement('div');
+    tab.className = 'day-tab' + (i === 0 ? ' active' : '') + (hasContent ? ' has-content' : '');
+    tab.textContent = `${day.label.replace('6月', '')} ${day.weekday}`;
+    tab.dataset.date = day.date;
+    tab.addEventListener('click', () => switchDay(day.date));
+    tabs.appendChild(tab);
+
+    // Content
+    const section = document.createElement('div');
+    section.className = 'day-content' + (i === 0 ? ' active' : '');
+    section.id = `day-${day.date}`;
+    section.innerHTML = renderDayContent(day, items);
+    contents.appendChild(section);
+  });
+
+  updateItemCount();
+  updateEditItemList();
+}
+
+function renderDayContent(day, items) {
+  let html = `<div class="day-label">${day.label} · ${day.weekday}</div>`;
+
+  // Market info for relevant days
+  html += renderMarketInfo(day.date);
+
+  // Items
+  if (items.length === 0) {
+    html += `<div class="empty-day">
+      <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+      <div>还没有安排，点右下角 + 添加</div>
+    </div>`;
+  } else {
+    // Sort by time
+    const sorted = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    sorted.forEach(item => {
+      const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.info;
+      html += `
+        <div class="timeline-item type-${item.category}">
+          <div class="item-header">
+            <span class="item-time">${item.time || '—'}</span>
+            <span class="item-title">${item.title}</span>
+          </div>
+          ${item.desc ? `<div class="item-desc">${item.desc}</div>` : ''}
+          <span class="item-tag ${cat.tag}">${cat.label}</span>
+        </div>`;
+    });
+  }
+
+  // Tips for specific days
+  html += renderTips(day.date);
+
+  return html;
+}
+
+function renderMarketInfo(date) {
+  const markets = {
+    '2026-06-21': `
+      <div class="market-info">
+        <h4>🎑 周日步行街 Night Market</h4>
+        <p>Tha Phae Walking Street — 约 17:00-22:00<br>
+        古城东侧 Tha Phae 门开始，最热闹的传统夜市，手工艺品、小吃、按摩都有。下午到傍晚去正好！</p>
+      </div>`,
+    '2026-06-22': `
+      <div class="market-info">
+        <h4>💡 周一无大型市集</h4>
+        <p>工作日清迈市集大多休息。可以安排白天活动（烹饪课、寺庙、咖啡店）或晚上逛 Night Bazaar。</p>
+      </div>`,
+    '2026-06-23': `
+      <div class="market-info">
+        <h4>🚌 6/23 全天包车（大象营日）</h4>
+        <p>Teetee Elephant 全包：08:30 接 → 大象散步 → 蓝庙 → 粘粘瀑布 → 约 16:30 送回。<br>
+        晚上回古城自由活动，可逛 Night Bazaar 或休息。</p>
+      </div>`,
+    '2026-06-24': `
+      <div class="market-info">
+        <h4>🎷 周三夜：North Gate Jazz Co-Op</h4>
+        <p>清迈最有名的现场爵士乐酒吧，每晚 19:00-00:00 演出。已加入行程（见下方）。</p>
+      </div>`,
+    '2026-06-25': ``,
+  };
+  return markets[date] || '';
+}
+
+function renderTips(date) {
+  const tips = {
+    '2026-06-21': `
+      <div class="tips-card">
+        <h4>💡 落地小贴士</h4>
+        <ul>
+          <li>出机场换少量泰铢够当天用即可，市区汇率更好</li>
+          <li>Grab 或 Bolt 打车去古城，约 150-200 铢</li>
+          <li>入住后先熟悉周边，不要赶行程</li>
+          <li>傍晚步行去 Tha Phae 门，顺路买些小食</li>
+        </ul>
+      </div>`,
+    '2026-06-25': `
+      <div class="tips-card">
+        <h4>✈️ 返程小贴士</h4>
+        <ul>
+          <li>建议提前 2.5 小时到机场（国际航班）</li>
+          <li>清迈机场不大，办理值机后还有时间逛机场小店</li>
+          <li>带好护照和出境卡</li>
+        </ul>
+      </div>`,
+  };
+  return tips[date] || '';
+}
+
+function switchDay(date) {
+  document.querySelectorAll('.day-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.date === date);
+  });
+  document.querySelectorAll('.day-content').forEach(c => {
+    c.classList.toggle('active', c.id === `day-${date}`);
+  });
+  document.querySelectorAll('.day-tab').forEach(t => {
+    t.classList.toggle('active', t.dataset.date === date);
+  });
+  // Re-evaluate active tab
+  document.querySelectorAll('.day-content').forEach(c => {
+    const isActive = c.id === `day-${date}`;
+    c.classList.toggle('active', isActive);
+  });
+}
+
+function updateItemCount() {
+  let total = 0;
+  Object.values(itinerary).forEach(arr => total += arr.length);
+  document.getElementById('item-count').textContent = total;
+
+  // Update tab dots
+  DAYS.forEach(day => {
+    const items = itinerary[day.date] || [];
+    const tab = document.querySelector(`.day-tab[data-date="${day.date}"]`);
+    if (tab) tab.classList.toggle('has-content', items.length > 0);
+  });
+}
+
+// ─── 编辑面板 ───
+let currentEditCat = 'info';
+let selectedEditDate = DAYS[0].date;
+
+function openEditPanel() {
+  document.getElementById('editOverlay').classList.add('active');
+  document.getElementById('editPanel').classList.add('active');
+  document.getElementById('fabAdd').style.display = 'none';
+
+  // Populate day select
+  const sel = document.getElementById('editDay');
+  sel.innerHTML = DAYS.map(d => `<option value="${d.date}">${d.label} ${d.weekday}</option>`).join('');
+  sel.value = selectedEditDate;
+
+  // Reset form
+  document.getElementById('editTime').value = '';
+  document.getElementById('editTitle').value = '';
+  document.getElementById('editDesc').value = '';
+  document.querySelectorAll('.cat-option').forEach(o => o.classList.remove('selected'));
+  document.querySelector(`.cat-option[data-cat="info"]`).classList.add('selected');
+  currentEditCat = 'info';
+
+  updateEditItemList();
+}
+
+function closeEditPanel() {
+  document.getElementById('editOverlay').classList.remove('active');
+  document.getElementById('editPanel').classList.remove('active');
+  document.getElementById('fabAdd').style.display = 'flex';
+}
+
+function updateEditItemList() {
+  const list = document.getElementById('editItemList');
+  const items = itinerary[selectedEditDate] || [];
+  if (items.length === 0) {
+    list.innerHTML = '<div style="font-size:13px;color:#bbb;padding:8px 0;">暂无安排</div>';
+    return;
+  }
+  list.innerHTML = items
+    .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
+    .map((item, i) => {
+      const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.info;
+      return `<div class="edit-item-row">
+        <span>${item.time || '—'} ${item.title}</span>
+        <button class="del-btn" data-date="${selectedEditDate}" data-index="${i}" title="删除">×</button>
+      </div>`;
+    }).join('');
+
+  list.querySelectorAll('.del-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const d = btn.dataset.date;
+      const idx = parseInt(btn.dataset.index);
+      itinerary[d].splice(idx, 1);
+      render();
+    });
+  });
+}
+
+function saveItem() {
+  const date = document.getElementById('editDay').value;
+  const time = document.getElementById('editTime').value;
+  const title = document.getElementById('editTitle').value.trim();
+  const desc = document.getElementById('editDesc').value.trim();
+
+  if (!title) {
+    document.getElementById('editTitle').focus();
+    return;
+  }
+
+  if (!itinerary[date]) itinerary[date] = [];
+  itinerary[date].push({ time, title, category: currentEditCat, desc });
+
+  // Reset form
+  document.getElementById('editTime').value = '';
+  document.getElementById('editTitle').value = '';
+  document.getElementById('editDesc').value = '';
+
+  render();
+  // Re-open panel to show updated list
+  openEditPanel();
+}
+
+// ─── 事件绑定 ───
+document.getElementById('fabAdd').addEventListener('click', openEditPanel);
+document.getElementById('editOverlay').addEventListener('click', closeEditPanel);
+document.getElementById('btnCancel').addEventListener('click', closeEditPanel);
+document.getElementById('btnSave').addEventListener('click', saveItem);
+
+document.querySelectorAll('.cat-option').forEach(opt => {
+  opt.addEventListener('click', () => {
+    document.querySelectorAll('.cat-option').forEach(o => o.classList.remove('selected'));
+    opt.classList.add('selected');
+    currentEditCat = opt.dataset.cat;
+  });
+});
+
+document.getElementById('editDay').addEventListener('change', e => {
+  selectedEditDate = e.target.value;
+  updateEditItemList();
+});
+
+// ─── 时间合理性检查提示 ───
+function checkSchedule(date) {
+  const items = itinerary[date];
+  if (!items || items.length < 2) return '';
+  const sorted = [...items].filter(i => i.time).sort((a, b) => a.time.localeCompare(b.time));
+  if (sorted.length < 2) return '';
+
+  const warnings = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const [h1, m1] = sorted[i-1].time.split(':').map(Number);
+    const [h2, m2] = sorted[i].time.split(':').map(Number);
+    const diff = (h2 * 60 + m2) - (h1 * 60 + m1);
+    if (diff < 30) {
+      warnings.push(`⚠️ ${sorted[i-1].title} → ${sorted[i].title} 之间只隔了 ${diff} 分钟，可能太赶。`);
+    }
+  }
+  return warnings.join('<br>');
+}
+
+// ─── 初始化 ───
+render();
+</script>
+
+</body>
+</html>
