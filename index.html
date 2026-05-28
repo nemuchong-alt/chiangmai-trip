@@ -484,8 +484,13 @@
   </div>
 
   <div class="form-group">
-    <label>备注 / Tips</label>
+    <label>备注</label>
     <textarea id="editDesc" placeholder="地点、预约方式、注意事项……"></textarea>
+  </div>
+
+  <div class="form-group">
+    <label>小贴士 <span style="font-weight:400;color:#aaa;font-size:12px">（每行一条，选填）</span></label>
+    <textarea id="editTips" placeholder="出机场换少量泰铢即可，市区汇率更好&#10;Grab 打车去古城，约 150 铢"></textarea>
   </div>
 
   <div class="btn-row">
@@ -518,8 +523,16 @@ const CATEGORY_MAP = {
 // 初始数据
 let itinerary = {
   '2026-06-21': [
-    { time: '10:10', title: 'MU205 上海 → 清迈', category: 'transport', desc: '上海浦东 T1 出发，预计 13:25 抵达清迈国际机场' },
-    { time: '17:00', title: '周日夜市（Sunday Walking Street）', category: 'market', desc: '塔佩门(Tha Phae Gate) → 帕辛寺(Wat Phra Singh) 全程\n• 主街 + 两侧寺庙空地的小吃摊\n• 17:00 开市，22:00 收摊，规模周六日都大\n• 建议吃饱了再去，或者留肚子一路吃过去' },
+    { time: '10:10', title: 'MU205 上海 → 清迈', category: 'transport', desc: '上海浦东 T1 出发，预计 13:25 抵达清迈国际机场', tips: [
+      '出机场换少量泰铢够当天用即可，市区汇率更好',
+      'Grab 或 Bolt 打车去古城，约 150-200 铢',
+      '入住后先熟悉周边，不要赶行程',
+      '傍晚步行去 Tha Phae 门，顺路买些小食',
+    ]},
+    { time: '17:00', title: '周日夜市（Sunday Walking Street）', category: 'market', desc: '塔佩门(Tha Phae Gate) → 帕辛寺(Wat Phra Singh)\n从古城东侧 Tha Phae 门出发，一路逛吃\n17:00 开市，22:00 收摊，规模周六日都大', tips: [
+      '主街 + 两侧寺庙空地的小吃摊',
+      '建议吃饱了再去，或者留肚子一路吃过去',
+    ]},
   ],
   '2026-06-22': [],
   '2026-06-23': [
@@ -529,7 +542,11 @@ let itinerary = {
     { time: '19:00', title: 'North Gate Jazz Co-Op 🎷', category: 'activity', desc: '📍 Sri Poom Rd，North Gate 旁（昌普门）\n🎷 小卷毛约 21:30 出场\n• 想坐好位子 → 19:30 前到，也可和老外拼桌\n• 不在乎座位 → 站着听，门口也能听\n• 每晚 19:00-00:00 有现场 Jazz，免费入场，消费制' },
   ],
   '2026-06-25': [
-    { time: '14:55', title: 'MU206 清迈 → 上海', category: 'transport', desc: '清迈国际机场出发，预计 20:00 抵达上海浦东 T1\n⚠️ 建议提前 2.5 小时到机场（国际航班值机+安检）' },
+    { time: '14:55', title: 'MU206 清迈 → 上海', category: 'transport', desc: '清迈国际机场出发，预计 20:00 抵达上海浦东 T1\n⚠️ 建议提前 2.5 小时到机场（国际航班值机+安检）', tips: [
+      '建议提前 2.5 小时到机场（国际航班）',
+      '清迈机场不大，办理值机后还有时间逛机场小店',
+      '带好护照和出境卡',
+    ]},
   ],
 };
 
@@ -581,6 +598,9 @@ function renderDayContent(day, items) {
     const sorted = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     sorted.forEach(item => {
       const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.info;
+      const isArrival = item.title.includes('→') && item.title.includes('清迈');
+      const isDeparture = item.title.includes('→') && item.title.includes('上海');
+      const tipsTitle = isDeparture ? '✈️ 返程小贴士' : '💡 小贴士';
       html += `
         <div class="timeline-item type-${item.category}">
           <div class="item-header">
@@ -589,12 +609,10 @@ function renderDayContent(day, items) {
           </div>
           ${item.desc ? `<div class="item-desc">${item.desc}</div>` : ''}
           <span class="item-tag ${cat.tag}">${cat.label}</span>
-        </div>`;
+        </div>
+        ${item.tips ? `<div class="tips-card"><h4>${tipsTitle}</h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
     });
   }
-
-  // Tips for specific days
-  html += renderTips(day.date);
 
   return html;
 }
@@ -753,12 +771,15 @@ function saveItem() {
   }
 
   if (!itinerary[date]) itinerary[date] = [];
-  itinerary[date].push({ time, title, category: currentEditCat, desc });
+  const tipsRaw = document.getElementById('editTips').value.trim();
+  const tips = tipsRaw ? tipsRaw.split('\n').map(t => t.trim()).filter(Boolean) : [];
+  itinerary[date].push({ time, title, category: currentEditCat, desc, tips: tips.length ? tips : undefined });
 
   // Reset form
   document.getElementById('editTime').value = '';
   document.getElementById('editTitle').value = '';
   document.getElementById('editDesc').value = '';
+  document.getElementById('editTips').value = '';
 
   render();
   // Re-open panel to show updated list
