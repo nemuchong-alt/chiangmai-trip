@@ -431,15 +431,6 @@
     <div class="day-tabs" id="dayTabs"></div>
   </header>
 
-  <div class="hotel-card">
-    <div class="hotel-icon">🏨</div>
-    <div class="hotel-info">
-      <div class="hotel-name">普拉辛格床酒店（仅成人）</div>
-      <div class="hotel-addr">📍 古城内，Ratchamanka 路</div>
-      <div class="hotel-meta">🚖 距机场约 12 分钟 · 距火车站约 18 分钟</div>
-    </div>
-  </div>
-
   <div id="dayContents"></div>
 
   <div class="source-bar">
@@ -518,13 +509,14 @@ const DAYS = [
   { date: '2026-06-23', label: '6月23日', weekday: '周二' },
   { date: '2026-06-24', label: '6月24日', weekday: '周三' },
   { date: '2026-06-25', label: '6月25日', weekday: '周四' },
+  { date: 'pending', label: '待定', weekday: '' },
 ];
 
 const CATEGORY_MAP = {
   transport: { label: '交通', color: 'var(--teal)', bg: 'var(--teal-light)', tag: 'tag-transport' },
   food:     { label: '美食', color: 'var(--yellow)', bg: 'var(--yellow-light)', tag: 'tag-food' },
   market:   { label: '市集', color: 'var(--purple)', bg: 'var(--purple-light)', tag: 'tag-market' },
-  activity: { label: '活动', color: 'var(--green)', bg: 'var(--green-light)', tag: 'tag-activity' },
+  activity: { label: '运动', color: 'var(--green)', bg: 'var(--green-light)', tag: 'tag-activity' },
   info:     { label: '备注', color: '#888', bg: '#f0f0f0', tag: 'tag-info' },
 };
 
@@ -569,6 +561,25 @@ let itinerary = {
       '建议提前 2.5 小时到机场（国际航班）',
       '清迈机场不大，办理值机后还有时间逛机场小店',
       '带好护照和出境卡',
+    ]},
+  ],
+  pending: [
+    { title: '瑜伽课 Early Owls', category: 'activity', tips: [
+      '场馆很美，清迈最美的瑜伽馆',
+      'Google map上找到官网和联系方式，提前预约',
+    ]},
+    { title: '瑜伽课 Satva Yoga', category: 'activity', tips: [
+      '300泰铢/节',
+      'Alignment Yoga，老师非常专业，善用辅具进入体式',
+      '练完下来感觉全身被正骨了一番',
+      'Google map上找到官网和联系方式，提前预约',
+    ]},
+    { title: '打枪体验 333 Shooting Range Thaphae', category: 'activity', tips: [
+      '在古城内，室内场馆，玩得不够过瘾',
+    ]},
+    { title: '打枪体验 700Year Shooting Range', category: 'activity', tips: [
+      '提前2小时，在美团可购买套餐，套餐可共享',
+      '最好在下午3点，价格优惠很多',
     ]},
   ],
 };
@@ -643,7 +654,7 @@ function render() {
     // Tab
     const tab = document.createElement('div');
     tab.className = 'day-tab' + (i === 0 ? ' active' : '') + (hasContent ? ' has-content' : '');
-    tab.textContent = `${day.label.replace('6月', '')} ${day.weekday}`;
+    tab.textContent = day.date === 'pending' ? 'P人待定' : `${day.label.replace('6月', '')} ${day.weekday}`;
     tab.dataset.date = day.date;
     tab.addEventListener('click', () => switchDay(day.date));
     tabs.appendChild(tab);
@@ -661,25 +672,65 @@ function render() {
 }
 
 function renderDayContent(day, items) {
+  // 待定页面
+  if (day.date === 'pending') {
+    let html = `<div class="day-label">待安排</div>`;
+    if (items.length === 0) {
+      html += `<div class="empty-day">
+        <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        <div>还没有待定安排，点右下角 + 添加</div>
+      </div>`;
+    } else {
+      items.forEach(item => {
+        const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.info;
+        const tipsTitle = '💡 小贴士';
+        html += `
+          <div class="timeline-item type-${item.category}">
+            <div class="item-header">
+              <span class="item-time">${item.time || '—'}</span>
+              <span class="item-title">${item.title}</span>
+            </div>
+            ${item.desc ? `<div class="item-desc">${item.desc.replace(/\n/g, '<br>')}</div>` : ''}
+            <span class="item-tag ${cat.tag}">${cat.label}</span>
+          </div>
+          ${item.tips ? `<div class="tips-card"><h4>${tipsTitle}</h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
+      });
+    }
+    return html;
+  }
+
+  const hotelHtml = `<div class="hotel-card">
+    <div class="hotel-icon">🏨</div>
+    <div class="hotel-info">
+      <div class="hotel-name">普拉辛格床酒店（仅成人）</div>
+      <div class="hotel-addr">📍 古城内，Ratchamanka 路</div>
+      <div class="hotel-meta">🚖 距机场 12 分钟 · 距火车站 18 分钟</div>
+    </div>
+  </div>`;
+
+  const isArrivalOrDeparture = day.date === '2026-06-21' || day.date === '2026-06-25';
+
   let html = `<div class="day-label">${day.label} · ${day.weekday}</div>`;
 
-  // Market info for relevant days
+  // 到达日和返程日，酒店卡片放顶部
+  if (isArrivalOrDeparture) html += hotelHtml;
+
+  // 概览
   html += renderMarketInfo(day.date, items);
 
-  // Items
+  // 行程
   if (items.length === 0) {
     html += `<div class="empty-day">
       <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
       <div>还没有安排，点右下角 + 添加</div>
     </div>`;
   } else {
-    // Sort by time
     const sorted = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     sorted.forEach(item => {
       const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.info;
-      const isArrival = item.title.includes('→') && item.title.includes('清迈') && !item.title.includes('上海');
-      const isDeparture = item.title.includes('→') && item.title.includes('上海');
-      const tipsTitle = isDeparture ? '✈️ 返程小贴士' : (isArrival ? '💡 落地小贴士' : '💡 小贴士');
+      const isArr = item.title.includes('→') && item.title.includes('清迈') && !item.title.includes('上海');
+      const isDep = item.title.includes('→') && item.title.includes('上海');
+      const tipsTitle = isDep ? '✈️ 返程小贴士' : (isArr ? '💡 落地小贴士' : '💡 小贴士');
       html += `
         <div class="timeline-item type-${item.category}">
           <div class="item-header">
@@ -692,6 +743,9 @@ function renderDayContent(day, items) {
         ${item.tips ? `<div class="tips-card"><h4>${tipsTitle}</h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
     });
   }
+
+  // 其他天，酒店卡片放底部
+  if (!isArrivalOrDeparture) html += hotelHtml;
 
   return html;
 }
@@ -769,13 +823,19 @@ function openEditPanel() {
 
   // Populate day select
   const sel = document.getElementById('editDay');
-  sel.innerHTML = DAYS.map(d => `<option value="${d.date}">${d.label} ${d.weekday}</option>`).join('');
+  sel.innerHTML = DAYS.map(d => {
+    if (d.date === 'pending') return `<option value="pending">P人待定</option>`;
+    return `<option value="${d.date}">${d.label} ${d.weekday}</option>`;
+  }).join('');
   sel.value = selectedEditDate;
 
   // Reset form
   document.getElementById('editTime').value = '';
   document.getElementById('editTitle').value = '';
   document.getElementById('editDesc').value = '';
+  document.getElementById('editTips').value = '';
+  document.getElementById('editWalk').value = '';
+  document.getElementById('editBike').value = '';
   document.querySelectorAll('.cat-option').forEach(o => o.classList.remove('selected'));
   document.querySelector(`.cat-option[data-cat="info"]`).classList.add('selected');
   currentEditCat = 'info';
