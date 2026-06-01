@@ -175,6 +175,26 @@
   .tag-activity { background: var(--green-light); color: var(--green); }
   .tag-info { background: #f0f0f0; color: #888; }
 
+  /* Pending items */
+  .pending-item { margin-bottom: 4px; }
+  .pending-move-btn {
+    display: block;
+    width: calc(100% - 32px);
+    margin: 4px 16px 10px;
+    padding: 6px 0;
+    background: var(--purple-light);
+    color: var(--purple);
+    border: 1.5px solid #d8c8ec;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: center;
+    transition: all 0.15s;
+  }
+  .pending-move-btn:hover { background: #e4d4f5; }
+
   .empty-day {
     text-align: center;
     padding: 40px 20px;
@@ -241,11 +261,15 @@
   .prep-todo-item {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 12px 16px;
+    gap: 8px;
+    padding: 10px 12px;
     border-bottom: 1px solid var(--border);
+    background: #fff;
+    cursor: grab;
+    user-select: none;
   }
   .prep-todo-item:last-child { border-bottom: none; }
+  .prep-todo-item:active { cursor: grabbing; }
   .prep-check {
     width: 20px;
     height: 20px;
@@ -295,6 +319,45 @@
     flex-shrink: 0;
   }
   .prep-delete:hover { color: #e07a5f; }
+
+  /* Prep section */
+  .prep-section {
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .prep-section-header {
+    padding: 10px 14px 8px;
+    background: var(--bg);
+  }
+  .prep-section-items {
+    min-height: 4px;
+  }
+  .prep-drag-handle {
+    color: #ccc;
+    font-size: 14px;
+    cursor: grab;
+    padding: 2px 6px;
+    flex-shrink: 0;
+  }
+  .prep-drag-handle:active { cursor: grabbing; }
+  .prep-add-inline {
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .prep-inline-input {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    padding: 2px 0;
+  }
+  .prep-inline-input::placeholder { color: #ccc; }
   .prep-add-form {
     padding: 12px 16px;
     border-top: 1px solid var(--border);
@@ -539,6 +602,25 @@
 
 <button class="fab" id="fabAdd" title="添加安排">+</button>
 
+<!-- 迁移弹窗 -->
+<div id="moveOverlay" class="edit-overlay"></div>
+<div id="movePanel" class="edit-panel" style="display:none;padding-top:20px">
+  <h3 style="margin-bottom:14px">安排到日期</h3>
+  <div style="font-size:13px;color:#888;margin-bottom:14px" id="moveItemTitle"></div>
+  <div class="form-group">
+    <label>日期</label>
+    <select id="moveDay"></select>
+  </div>
+  <div class="form-group">
+    <label>时间</label>
+    <input type="time" id="moveTime" value="09:00">
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-secondary" id="btnMoveCancel">取消</button>
+    <button class="btn btn-primary" id="btnMoveConfirm">确定迁移</button>
+  </div>
+</div>
+
 <!-- Edit Overlay -->
 <div class="edit-overlay" id="editOverlay"></div>
 
@@ -549,6 +631,14 @@
   <div class="form-group">
     <label>日期</label>
     <select id="editDay"></select>
+  </div>
+
+  <div class="form-group" id="editPrepCatGroup" style="display:none">
+    <label>分类</label>
+    <select id="editPrepCat">
+      <option value="toBring">需要带</option>
+      <option value="toBuy">需要买</option>
+    </select>
   </div>
 
   <div class="form-group">
@@ -711,14 +801,25 @@ function saveItinerary() {
 let itinerary = loadItinerary();
 
 // ─── 行前准备 Todo ───
-const DEFAULT_PREP_TODOS = [
-  { title: '购买泰国电话卡*2', note: '', done: false },
-];
+const DEFAULT_PREP_TODOS = {
+  toBring: [
+    { title: '护照', note: '', done: false },
+    { title: '现金/银行卡', note: '', done: false },
+  ],
+  toBuy: [
+    { title: '泰国电话卡*2', note: '', done: false },
+  ],
+};
 
 function loadPrepTodos() {
   try {
     const saved = localStorage.getItem('chiangmai_prep');
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // 兼容旧版单数组格式
+      if (Array.isArray(parsed)) return parsed;
+      return parsed;
+    }
   } catch (e) {}
   return JSON.parse(JSON.stringify(DEFAULT_PREP_TODOS));
 }
@@ -730,6 +831,31 @@ function savePrepTodos() {
 }
 
 let prepTodos = loadPrepTodos();
+// 兼容旧版 localStorage（单数组）→ 迁移
+if (Array.isArray(prepTodos)) {
+  prepTodos = { toBring: prepTodos, toBuy: [] };
+  savePrepTodos();
+}
+// 兼容：数据曾误写到 itinerary['prep']（旧版 saveItem 没有 prep 分支）
+if (itinerary['prep'] && itinerary['prep'].length > 0) {
+  itinerary['prep'].forEach(item => {
+    prepTodos.toBuy.push({ title: item.title, note: item.note || item.desc || '', done: false });
+  });
+  itinerary['prep'] = [];
+  saveItinerary();
+  savePrepTodos();
+}
+// 一次性恢复：找回之前丢失的“去银行换取20000泰铢”待办
+if (!localStorage.getItem('chiangmai_prep_recovered_v1')) {
+  const hasBankTodo = (prepTodos.toBring || []).concat(prepTodos.toBuy || []).some(item =>
+    (item.title || '').includes('去银行换取20000泰铢')
+  );
+  if (!hasBankTodo) {
+    prepTodos.toBuy.unshift({ title: '去银行换取20000泰铢', note: '', done: false });
+    savePrepTodos();
+  }
+  localStorage.setItem('chiangmai_prep_recovered_v1', '1');
+}
 // 每个地点到酒店的时间，walk=步行分钟，bike=摩托车分钟
 // 30分钟以内步行两者都显示，超过只显示摩托车时间
 const DIST_FROM_HOTEL = {
@@ -819,35 +945,39 @@ function render() {
 function renderDayContent(day, items) {
   // 行前准备
   if (day.date === 'prep') {
-    let html = `<div class="day-label">行前准备</div>`;
-    html += `<div class="timeline" style="padding-top:4px">`;
-    if (prepTodos.length === 0) {
-      html += `<div style="text-align:center;padding:30px;color:#ccc;font-size:13px">还没有待办事项</div>`;
-    } else {
-      prepTodos.forEach((todo, i) => {
-        const done = todo.done ? 'checked' : '';
-        const doneCls = todo.done ? 'done' : '';
-        html += `<div class="prep-todo-item">
-          <div class="prep-check ${done}" data-i="${i}"></div>
-          <div class="prep-todo-text ${doneCls}">
-            <div class="prep-todo-title">${todo.title}</div>
-            ${todo.note ? `<div class="prep-todo-note">${todo.note}</div>` : ''}
-          </div>
-          <div class="prep-delete" data-i="${i}">×</div>
-        </div>`;
-      });
-    }
-    html += `</div>`;
-    html += `<div class="prep-add-form">
-      <div class="prep-add-row">
-        <input type="text" id="prepTitleInput" placeholder="待办事项">
-      </div>
-      <div class="prep-add-note">
-        <textarea id="prepNoteInput" rows="2" placeholder="备注（选填）"></textarea>
-      </div>
-      <button class="prep-save-btn" id="prepSaveBtn">添加</button>
-    </div>`;
-    return html;
+    const renderSection = (cat, label, color) => {
+      const items = prepTodos[cat] || [];
+      let ih = '';
+      if (items.length === 0) {
+        ih = `<div style="text-align:center;padding:20px;color:#ddd;font-size:13px">暂无</div>`;
+      } else {
+        items.forEach((todo, i) => {
+          const done = todo.done ? 'checked' : '';
+          const doneCls = todo.done ? 'done' : '';
+          ih += `<div class="prep-todo-item" draggable="true" data-cat="${cat}" data-i="${i}">
+            <div class="prep-check ${done}" data-cat="${cat}" data-i="${i}"></div>
+            <div class="prep-todo-text ${doneCls}">
+              <div class="prep-todo-title">${todo.title}</div>
+              ${todo.note ? `<div class="prep-todo-note">${todo.note}</div>` : ''}
+            </div>
+            <div class="prep-drag-handle" title="拖动排序">☰</div>
+            <div class="prep-delete" data-cat="${cat}" data-i="${i}">×</div>
+          </div>`;
+        });
+      }
+      return `<div class="prep-section" data-cat="${cat}">
+        <div class="prep-section-header" style="border-left:3px solid ${color}">
+          <span style="font-size:12px;font-weight:600;color:${color}">${label}</span>
+        </div>
+        <div class="prep-section-items" data-cat="${cat}">${ih}</div>
+        <div class="prep-add-inline" data-cat="${cat}">
+          <input type="text" class="prep-inline-input" data-cat="${cat}" placeholder="+ 添加${label}">
+        </div>
+      </div>`;
+    };
+
+    return `<div class="day-label">行前准备</div>
+      <div style="padding:0 16px">${renderSection('toBring', '需要带', 'var(--teal)')}${renderSection('toBuy', '需要买', 'var(--yellow)')}</div>`;
   }
 
   // P人待定
@@ -859,19 +989,21 @@ function renderDayContent(day, items) {
         <div>还没有待定安排，点右下角 + 添加</div>
       </div>`;
     } else {
-      items.forEach(item => {
+      items.forEach((item, i) => {
         const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.info;
         const tipsTitle = '💡 小贴士';
         ph += `
-          <div class="timeline-item type-${item.category}">
-            <div class="item-header">
-              <span class="item-time">${item.time || '—'}</span>
-              <span class="item-title">${item.title}</span>
+          <div class="pending-item" data-i="${i}">
+            <div class="timeline-item type-${item.category}">
+              <div class="item-header">
+                <span class="item-time">${item.time || '—'}</span>
+                <span class="item-title">${item.title}</span>
+              </div>
+              ${item.desc ? `<div class="item-desc">${item.desc.replace(/\n/g, '<br>')}</div>` : ''}
+              <span class="item-tag ${cat.tag}">${cat.label}</span>
             </div>
-            ${item.desc ? `<div class="item-desc">${item.desc.replace(/\n/g, '<br>')}</div>` : ''}
-            <span class="item-tag ${cat.tag}">${cat.label}</span>
-          </div>
-          ${item.tips ? `<div class="tips-card"><h4>${tipsTitle}</h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
+            <button class="pending-move-btn" data-i="${i}">安排到日期 →</button>
+            ${item.tips ? `<div class="tips-card"><h4>${tipsTitle}</h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
       });
     }
     return ph;
@@ -1020,6 +1152,23 @@ function openEditPanel() {
   document.querySelector(`.cat-option[data-cat="info"]`).classList.add('selected');
   currentEditCat = 'info';
 
+  // 行前准备分类显示/隐藏
+  const isPrep = selectedEditDate === 'prep';
+  document.getElementById('editPrepCatGroup').style.display = isPrep ? 'block' : 'none';
+  if (isPrep) {
+    document.getElementById('editTime').parentElement.style.display = 'none';
+    document.getElementById('editWalk').parentElement.style.display = 'none';
+    document.getElementById('editBike').parentElement.style.display = 'none';
+    document.getElementById('editTips').parentElement.style.display = 'none';
+    document.querySelector('.category-picker').style.display = 'none';
+  } else {
+    document.getElementById('editTime').parentElement.style.display = '';
+    document.getElementById('editWalk').parentElement.style.display = '';
+    document.getElementById('editBike').parentElement.style.display = '';
+    document.getElementById('editTips').parentElement.style.display = '';
+    document.querySelector('.category-picker').style.display = '';
+  }
+
   updateEditItemList();
 }
 
@@ -1068,16 +1217,19 @@ function saveItem() {
     return;
   }
 
-  // 行前准备 → 写入 prepTodos
+  // 行前准备 → 写入 prepTodos（需选分类）
   if (date === 'prep') {
-    const tipsRaw = document.getElementById('editTips').value.trim();
-    const tips = tipsRaw ? tipsRaw.split('\n').map(t => t.trim()).filter(Boolean) : [];
-    const note = desc || (tips.length ? tips.join('\n') : '');
-    prepTodos.push({ title, note, done: false });
+    const title = document.getElementById('editTitle').value.trim();
+    const note = document.getElementById('editDesc').value.trim();
+    const cat = document.getElementById('editPrepCat').value; // 'toBring' | 'toBuy'
+    if (!title) {
+      document.getElementById('editTitle').focus();
+      return;
+    }
+    prepTodos[cat].push({ title, note, done: false });
     savePrepTodos();
     document.getElementById('editTitle').value = '';
     document.getElementById('editDesc').value = '';
-    document.getElementById('editTips').value = '';
     render();
     openEditPanel();
     return;
@@ -1121,6 +1273,21 @@ document.querySelectorAll('.cat-option').forEach(opt => {
 
 document.getElementById('editDay').addEventListener('change', e => {
   selectedEditDate = e.target.value;
+  const isPrep = selectedEditDate === 'prep';
+  document.getElementById('editPrepCatGroup').style.display = isPrep ? 'block' : 'none';
+  if (isPrep) {
+    document.getElementById('editTime').parentElement.style.display = 'none';
+    document.getElementById('editWalk').parentElement.style.display = 'none';
+    document.getElementById('editBike').parentElement.style.display = 'none';
+    document.getElementById('editTips').parentElement.style.display = 'none';
+    document.querySelector('.category-picker').style.display = 'none';
+  } else {
+    document.getElementById('editTime').parentElement.style.display = '';
+    document.getElementById('editWalk').parentElement.style.display = '';
+    document.getElementById('editBike').parentElement.style.display = '';
+    document.getElementById('editTips').parentElement.style.display = '';
+    document.querySelector('.category-picker').style.display = '';
+  }
   updateEditItemList();
 });
 
@@ -1128,32 +1295,133 @@ document.getElementById('editDay').addEventListener('change', e => {
 document.addEventListener('click', e => {
   // 复选框切换
   if (e.target.classList.contains('prep-check')) {
+    const cat = e.target.dataset.cat;
     const i = parseInt(e.target.dataset.i);
-    prepTodos[i].done = !prepTodos[i].done;
+    prepTodos[cat][i].done = !prepTodos[cat][i].done;
     savePrepTodos();
     render();
   }
   // 删除按钮
   if (e.target.classList.contains('prep-delete')) {
+    const cat = e.target.dataset.cat;
     const i = parseInt(e.target.dataset.i);
-    prepTodos.splice(i, 1);
+    prepTodos[cat].splice(i, 1);
     savePrepTodos();
     render();
   }
-  // 添加按钮
-  if (e.target.id === 'prepSaveBtn') {
-    const titleInput = document.getElementById('prepTitleInput');
-    const noteInput = document.getElementById('prepNoteInput');
-    const title = titleInput.value.trim();
-    if (!title) {
-      titleInput.focus();
-      return;
-    }
-    const note = noteInput.value.trim();
-    prepTodos.push({ title, note, done: false });
+});
+
+// 拖拽排序
+document.addEventListener('dragstart', e => {
+  if (e.target.classList.contains('prep-todo-item')) {
+    e.dataTransfer.setData('text/plain', JSON.stringify({
+      cat: e.target.dataset.cat,
+      i: parseInt(e.target.dataset.i),
+    }));
+    e.target.style.opacity = '0.4';
+  }
+});
+document.addEventListener('dragend', e => {
+  if (e.target.classList.contains('prep-todo-item')) {
+    e.target.style.opacity = '';
+  }
+});
+document.addEventListener('dragover', e => {
+  const item = e.target.closest('.prep-todo-item');
+  if (item) {
+    e.preventDefault();
+    item.style.background = 'var(--green-light)';
+  }
+});
+document.addEventListener('dragleave', e => {
+  const item = e.target.closest('.prep-todo-item');
+  if (item) item.style.background = '';
+});
+document.addEventListener('drop', e => {
+  const targetItem = e.target.closest('.prep-todo-item');
+  if (!targetItem) return;
+  e.preventDefault();
+  targetItem.style.background = '';
+  try {
+    const { cat, i } = JSON.parse(e.dataTransfer.getData('text/plain'));
+    const toCat = targetItem.dataset.cat;
+    const toI = parseInt(targetItem.dataset.i);
+    if (cat !== toCat) return; // 只允许同分类内拖动
+    const [moved] = prepTodos[cat].splice(i, 1);
+    prepTodos[cat].splice(toI, 0, moved);
     savePrepTodos();
-    titleInput.value = '';
-    noteInput.value = '';
+    render();
+  } catch (_) {}
+});
+
+// 行前准备内联输入框回车添加
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.classList.contains('prep-inline-input')) {
+    const input = e.target;
+    const title = input.value.trim();
+    if (!title) return;
+    const cat = input.dataset.cat;
+    prepTodos[cat].push({ title, note: '', done: false });
+    savePrepTodos();
+    input.value = '';
+    render();
+  }
+});
+
+// ─── 待定事项迁移 ───
+let pendingMoveIndex = null;
+
+function openMovePanel(itemIndex) {
+  pendingMoveIndex = itemIndex;
+  const item = itinerary.pending[itemIndex];
+  document.getElementById('moveItemTitle').textContent = item ? item.title : '';
+  document.getElementById('moveTime').value = item && item.time ? item.time : '09:00';
+
+  // 填充日期下拉
+  const daySelect = document.getElementById('moveDay');
+  const realDays = DAYS.filter(d => d.date !== 'prep' && d.date !== 'pending');
+  daySelect.innerHTML = realDays.map(d =>
+    `<option value="${d.date}">${d.label} ${d.weekday}</option>`
+  ).join('');
+
+  document.getElementById('moveOverlay').classList.add('active');
+  document.getElementById('movePanel').style.display = 'block';
+  document.getElementById('moveTime').focus();
+}
+
+function closeMovePanel() {
+  document.getElementById('moveOverlay').classList.remove('active');
+  document.getElementById('movePanel').style.display = 'none';
+  pendingMoveIndex = null;
+}
+
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('pending-move-btn')) {
+    const i = parseInt(e.target.dataset.i);
+    openMovePanel(i);
+  }
+  if (e.target.id === 'btnMoveCancel' || e.target.id === 'moveOverlay') {
+    closeMovePanel();
+  }
+  if (e.target.id === 'btnMoveConfirm') {
+    if (pendingMoveIndex === null) return;
+    const targetDate = document.getElementById('moveDay').value;
+    const targetTime = document.getElementById('moveTime').value;
+    const item = itinerary.pending[pendingMoveIndex];
+    if (!item) { closeMovePanel(); return; }
+    // 写入目标日期
+    if (!itinerary[targetDate]) itinerary[targetDate] = [];
+    itinerary[targetDate].push({
+      time: targetTime,
+      title: item.title,
+      category: item.category,
+      desc: item.desc,
+      tips: item.tips,
+    });
+    // 从待定中删除
+    itinerary.pending.splice(pendingMoveIndex, 1);
+    saveItinerary();
+    closeMovePanel();
     render();
   }
 });
