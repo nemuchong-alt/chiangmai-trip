@@ -250,6 +250,19 @@
     align-items: center;
     gap: 6px;
   }
+  .tips-edit-btn {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--green);
+    background: var(--green-light);
+    border: 1px solid #b8dcc4;
+    border-radius: 8px;
+    padding: 1px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+  }
   .tips-card ul {
     font-size: 13px;
     color: #4a7a5a;
@@ -618,6 +631,21 @@
   <div class="btn-row">
     <button class="btn btn-secondary" id="btnMoveCancel">取消</button>
     <button class="btn btn-primary" id="btnMoveConfirm">确定迁移</button>
+  </div>
+</div>
+
+<!-- 小贴士编辑面板 -->
+<div id="tipsOverlay" class="edit-overlay"></div>
+<div id="tipsPanel" class="edit-panel" style="display:none;padding-top:20px">
+  <h3 style="margin-bottom:6px">编辑小贴士</h3>
+  <div style="font-size:13px;color:#888;margin-bottom:14px" id="tipsItemTitle"></div>
+  <div id="tipsEditList" style="margin-bottom:12px"></div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <input type="text" id="tipsNewInput" placeholder="新贴士，回车添加" style="flex:1;padding:8px 12px;border:1.5px solid var(--border);border-radius:10px;font-size:13px;font-family:inherit;outline:none">
+  </div>
+  <div class="btn-row" style="margin-top:14px">
+    <button class="btn btn-secondary" id="btnTipsCancel">取消</button>
+    <button class="btn btn-primary" id="btnTipsSave">保存</button>
   </div>
 </div>
 
@@ -1003,7 +1031,7 @@ function renderDayContent(day, items) {
               <span class="item-tag ${cat.tag}">${cat.label}</span>
             </div>
             <button class="pending-move-btn" data-i="${i}">安排到日期 →</button>
-            ${item.tips ? `<div class="tips-card"><h4>${tipsTitle}</h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
+            ${item.tips ? `<div class="tips-card" data-date="pending" data-i="${i}"><h4>${tipsTitle}<button class="tips-edit-btn" data-date="pending" data-i="${i}">编辑</button></h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
       });
     }
     return ph;
@@ -1026,9 +1054,6 @@ function renderDayContent(day, items) {
   // 到达日和返程日，酒店卡片放顶部
   if (isArrivalOrDeparture) html += hotelHtml;
 
-  // 概览
-  html += renderMarketInfo(day.date, items);
-
   // 行程
   if (items.length === 0) {
     html += `<div class="empty-day">
@@ -1036,8 +1061,9 @@ function renderDayContent(day, items) {
       <div>还没有安排，点右下角 + 添加</div>
     </div>`;
   } else {
-    const sorted = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-    sorted.forEach(item => {
+    const sortedItems = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    sortedItems.forEach(item => {
+      const idx = items.indexOf(item); // 原始数组索引
       const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.info;
       const isArr = item.title.includes('→') && item.title.includes('清迈') && !item.title.includes('上海');
       const isDep = item.title.includes('→') && item.title.includes('上海');
@@ -1051,7 +1077,7 @@ function renderDayContent(day, items) {
           ${item.desc ? `<div class="item-desc">${item.desc.replace(/\n/g, '<br>')}</div>` : ''}
           <span class="item-tag ${cat.tag}">${cat.label}</span>
         </div>
-        ${item.tips ? `<div class="tips-card"><h4>${tipsTitle}</h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
+        ${item.tips ? `<div class="tips-card" data-date="${day.date}" data-i="${idx}"><h4>${tipsTitle}<button class="tips-edit-btn" data-date="${day.date}" data-i="${idx}">编辑</button></h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
     });
   }
 
@@ -1423,6 +1449,83 @@ document.addEventListener('click', e => {
     saveItinerary();
     closeMovePanel();
     render();
+  }
+});
+
+// ─── 小贴士编辑 ───
+let editingTips = { date: null, i: null, tips: [] };
+
+function openTipsPanel(date, i) {
+  const arr = date === 'pending' ? itinerary.pending : (itinerary[date] || []);
+  const item = arr[i];
+  if (!item) return;
+  editingTips = { date, i, tips: item.tips ? [...item.tips] : [] };
+  document.getElementById('tipsItemTitle').textContent = item.title;
+  document.getElementById('tipsNewInput').value = '';
+  renderTipsEditList();
+  document.getElementById('tipsOverlay').classList.add('active');
+  document.getElementById('tipsPanel').style.display = 'block';
+  document.getElementById('tipsNewInput').focus();
+}
+
+function closeTipsPanel() {
+  document.getElementById('tipsOverlay').classList.remove('active');
+  document.getElementById('tipsPanel').style.display = 'none';
+  editingTips = { date: null, i: null, tips: [] };
+}
+
+function renderTipsEditList() {
+  const list = document.getElementById('tipsEditList');
+  if (editingTips.tips.length === 0) {
+    list.innerHTML = '<div style="font-size:13px;color:#ccc;padding:4px 0">暂无小贴士</div>';
+    return;
+  }
+  list.innerHTML = editingTips.tips.map((t, i) =>
+    `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="flex:1;font-size:13px;color:var(--text)">${t}</span>
+      <button class="tips-del-btn" data-idx="${i}" style="background:none;border:none;color:#e07a5f;font-size:16px;cursor:pointer;padding:0 4px">×</button>
+    </div>`
+  ).join('');
+}
+
+document.addEventListener('click', e => {
+  // 编辑小贴士按钮
+  if (e.target.classList.contains('tips-edit-btn')) {
+    const date = e.target.dataset.date;
+    const i = parseInt(e.target.dataset.i);
+    openTipsPanel(date, i);
+  }
+  // 关闭面板
+  if (e.target.id === 'btnTipsCancel' || e.target.id === 'tipsOverlay') {
+    closeTipsPanel();
+  }
+  // 删除单条
+  if (e.target.classList.contains('tips-del-btn')) {
+    const idx = parseInt(e.target.dataset.idx);
+    editingTips.tips.splice(idx, 1);
+    renderTipsEditList();
+  }
+  // 保存
+  if (e.target.id === 'btnTipsSave') {
+    const arr = editingTips.date === 'pending' ? itinerary.pending : (itinerary[editingTips.date] || []);
+    const item = arr[editingTips.i];
+    if (item) {
+      item.tips = editingTips.tips.length ? editingTips.tips : undefined;
+      saveItinerary();
+    }
+    closeTipsPanel();
+    render();
+  }
+});
+
+// 回车添加新贴士
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.id === 'tipsNewInput') {
+    const val = e.target.value.trim();
+    if (!val) return;
+    editingTips.tips.push(val);
+    e.target.value = '';
+    renderTipsEditList();
   }
 });
 
