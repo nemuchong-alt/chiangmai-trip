@@ -143,6 +143,7 @@ const dom = {
   syncPill: document.getElementById('syncPill'),
   syncStatus: document.getElementById('syncStatus'),
   syncDetail: document.getElementById('syncDetail'),
+  btnQuickAdd: document.getElementById('btnQuickAdd'),
   btnCloudAuth: document.getElementById('btnCloudAuth'),
   btnCloudRefresh: document.getElementById('btnCloudRefresh'),
   btnCloudUpload: document.getElementById('btnCloudUpload'),
@@ -471,6 +472,7 @@ function canEditData() {
 
 function updateSyncUI() {
   cloudState.localBackupAvailable = Boolean(readStoredLocalBackup());
+  dom.btnQuickAdd.style.display = canEditData() ? '' : 'none';
 
   if (!cloudState.configured) {
     dom.syncPill.textContent = '本地模式';
@@ -513,7 +515,7 @@ function updateSyncUI() {
     } else if (!cloudState.hasRemoteData) {
       dom.syncDetail.textContent = '云端还没有数据。可以先用当前页面内容做一次初始化上传。';
     } else {
-      dom.syncDetail.textContent = `当前编辑身份：${cloudState.userEmail || '已登录编辑账号'}`;
+      dom.syncDetail.textContent = `当前编辑身份：${cloudState.userEmail || '已登录编辑账号'}。可以点“新增安排”或右下角加号继续编辑。`;
     }
   } else if (cloudState.available) {
     dom.syncPill.textContent = '共享只读';
@@ -1780,6 +1782,7 @@ function bindEvents() {
   dom.btnCloudAuth.addEventListener('click', () => {
     void handleCloudAuth();
   });
+  dom.btnQuickAdd.addEventListener('click', openEditPanel);
   dom.authOverlay.addEventListener('click', closeAuthPanel);
   dom.btnAuthCancel.addEventListener('click', closeAuthPanel);
   dom.btnAuthSend.addEventListener('click', () => {

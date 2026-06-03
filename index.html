@@ -414,7 +414,7 @@
   /* Edit FAB */
   .fab {
     position: fixed;
-    bottom: 24px;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     right: 24px;
     width: 52px;
     height: 52px;
@@ -712,6 +712,7 @@
       <div class="sync-pill" id="syncPill">本地模式</div>
     </div>
     <div class="sync-actions">
+      <button class="sync-btn" id="btnQuickAdd" type="button">新增安排</button>
       <button class="sync-btn" id="btnCloudAuth" type="button">编辑登录</button>
       <button class="sync-btn" id="btnCloudRefresh" type="button">从云端刷新</button>
       <button class="sync-btn" id="btnCloudUpload" type="button">上传当前数据到云端</button>
