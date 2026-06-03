@@ -152,18 +152,6 @@ const dom = {
   importDataInput: document.getElementById('importDataInput'),
 };
 
-const DIST_FROM_HOTEL = {
-  airport: { walk: null, bike: 12, label: '机场' },
-  station: { walk: null, bike: 18, label: '火车站' },
-  thatphae: { walk: 8, bike: 5, label: '塔佩门' },
-  sundaymarket: { walk: 8, bike: 5, label: '周日夜市' },
-  nightbazaar: { walk: 25, bike: 10, label: 'Night Bazaar' },
-  northgate: { walk: 12, bike: 8, label: 'North Gate' },
-  elephant: { walk: null, bike: 50, label: '大象营' },
-  bluetemple: { walk: null, bike: 30, label: '蓝庙' },
-  waterfall: { walk: null, bike: 45, label: '粘粘瀑布' },
-};
-
 let itinerary = loadItinerary();
 let prepTodos = loadPrepTodos();
 let currentEditCat = 'info';
@@ -428,46 +416,13 @@ function migrateLegacyPrepData() {
   prepTodos.toBuy = (prepTodos.toBuy || []).map((todo, index) => normalizePrepTodo(todo, 'toBuy', index));
 }
 
-function formatDist(dist) {
-  if (!dist) return '';
-  if (dist.walk && dist.bike) {
-    return `步行 ${dist.walk} 分钟 / 摩托 ${dist.bike} 分钟`;
-  }
-  return `摩托 ${dist.bike} 分钟`;
-}
-
-function guessDist(item) {
-  const text = `${item.title || ''}${item.desc || ''}`;
-  if (item.dist) return formatDist(item.dist);
-  if (/机场|MU205|MU206/.test(text)) return formatDist(DIST_FROM_HOTEL.airport);
-  if (/火车站|train/.test(text)) return formatDist(DIST_FROM_HOTEL.station);
-  if (/Tha Phae|塔佩门|周日夜市|Sunday Walking/.test(text)) return formatDist(DIST_FROM_HOTEL.sundaymarket);
-  if (/Night Bazaar|night.?bazaar/i.test(text)) return formatDist(DIST_FROM_HOTEL.nightbazaar);
-  if (/North Gate|爵士|Jazz/.test(text)) return formatDist(DIST_FROM_HOTEL.northgate);
-  if (/大象营|Elephant/.test(text)) return formatDist(DIST_FROM_HOTEL.elephant);
-  if (/蓝庙|Wat Rong|Bluetemple/i.test(text)) return formatDist(DIST_FROM_HOTEL.bluetemple);
-  if (/瀑布|Waterfall/.test(text)) return formatDist(DIST_FROM_HOTEL.waterfall);
-  return '';
-}
-
-function getDayDistSummary(items) {
-  if (!items || items.length === 0) return '';
-  const sorted = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-  const first = sorted[0];
-  const last = sorted[sorted.length - 1];
-  const firstDist = guessDist(first);
-  const lastDist = guessDist(last);
-  if (!firstDist && !lastDist) return '';
-  if (first === last) return firstDist ? `距酒店 ${firstDist}` : '';
-  const parts = [];
-  if (firstDist) parts.push(`去程 ${firstDist}`);
-  if (lastDist) parts.push(`回程 ${lastDist}`);
-  return parts.join(' · ');
+function hasCloudSession() {
+  return Boolean(cloudState.session?.user?.email);
 }
 
 function canEditData() {
   if (!cloudState.configured) return true;
-  return cloudState.available && cloudState.editor;
+  return cloudState.available && hasCloudSession();
 }
 
 function updateSyncUI() {
@@ -488,7 +443,7 @@ function updateSyncUI() {
 
   dom.btnCloudAuth.style.display = '';
   dom.btnCloudRefresh.style.display = '';
-  dom.btnCloudUpload.style.display = cloudState.editor ? '' : 'none';
+  dom.btnCloudUpload.style.display = canEditData() ? '' : 'none';
   dom.btnRestoreLocalBackup.style.display = cloudState.localBackupAvailable ? '' : 'none';
   dom.btnCloudUpload.textContent = cloudState.hasRemoteData ? '用当前页面覆盖云端' : '上传当前数据到云端';
 
@@ -502,8 +457,8 @@ function updateSyncUI() {
     dom.syncPill.className = 'sync-pill sync-pill-warn';
     dom.syncStatus.textContent = '还没成功连上 Supabase。';
     dom.syncDetail.textContent = cloudState.lastError;
-  } else if (cloudState.available && cloudState.editor) {
-    dom.syncPill.textContent = '共享可编辑';
+  } else if (cloudState.available && hasCloudSession()) {
+    dom.syncPill.textContent = cloudState.editor ? '共享可编辑' : '已登录可编辑';
     dom.syncPill.className = 'sync-pill sync-pill-ok';
     dom.syncStatus.textContent = '当前显示的是共享数据，你的新增/删除会写入公开网页。';
     if (cloudState.saving) {
@@ -514,6 +469,8 @@ function updateSyncUI() {
       dom.syncDetail.textContent = '你刚导入了本机备份，还没上传到云端；确认无误后点“用当前页面覆盖云端”。';
     } else if (!cloudState.hasRemoteData) {
       dom.syncDetail.textContent = '云端还没有数据。可以先用当前页面内容做一次初始化上传。';
+    } else if (!cloudState.editor) {
+      dom.syncDetail.textContent = `当前登录邮箱 ${cloudState.userEmail || '已登录邮箱'} 已进入编辑模式。页面先开放编辑入口，真正写入权限仍由 Supabase 校验。`;
     } else {
       dom.syncDetail.textContent = `当前编辑身份：${cloudState.userEmail || '已登录编辑账号'}。可以点“新增安排”或右下角加号继续编辑。`;
     }
@@ -641,16 +598,14 @@ function renderDayContent(day, items, canEdit) {
   </div>`;
 
   const isArrivalOrDeparture = day.date === '2026-06-21' || day.date === '2026-06-25';
-  const summary = renderMarketInfo(day.date, items);
   let html = `<div class="day-label">${day.label} · ${day.weekday}</div>`;
 
   if (isArrivalOrDeparture) html += hotelHtml;
-  if (summary) html += summary;
 
   if (items.length === 0) {
     html += `<div class="empty-day">
       <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-      <div>${canEdit ? '还没有安排，点右下角 + 添加' : '还没有安排'}</div>
+      <div>${canEdit ? '还没有安排，点“新增安排”开始添加' : '还没有安排'}</div>
     </div>`;
   } else {
     const sortedItems = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
@@ -673,38 +628,6 @@ function renderDayContent(day, items, canEdit) {
 
   if (!isArrivalOrDeparture) html += hotelHtml;
   return html;
-}
-
-function renderMarketInfo(date, items) {
-  const distLine = getDayDistSummary(items);
-  const markets = {
-    '2026-06-21': `
-      <div class="market-info">
-        <h4>🏍️ 6月21日 · 到达日</h4>
-        <p>上午出发 → 下午抵达 → 傍晚逛周日夜市${distLine ? `<br>${distLine}` : ''}</p>
-      </div>`,
-    '2026-06-22': `
-      <div class="market-info">
-        <h4>💡 周一无大型市集</h4>
-        <p>工作日清迈市集大多休息，可安排白天活动或晚上逛 Night Bazaar${distLine ? `<br>${distLine}` : ''}</p>
-      </div>`,
-    '2026-06-23': `
-      <div class="market-info">
-        <h4>🚌 6月23日 · 包车日</h4>
-        <p>08:30 大象营 → 13:00 蓝庙 → 14:30 粘粘瀑布 → 约 16:30 回民宿${distLine ? `<br>${distLine}` : ''}</p>
-      </div>`,
-    '2026-06-24': `
-      <div class="market-info">
-        <h4>🎷 6月24日 · 古城夜</h4>
-        <p>19:00 North Gate Jazz${distLine ? `<br>${distLine}` : ''}</p>
-      </div>`,
-    '2026-06-25': `
-      <div class="market-info">
-        <h4>✈️ 6月25日 · 返程日</h4>
-        <p>${distLine || '酒店 → 机场'}</p>
-      </div>`,
-  };
-  return markets[date] || '';
 }
 
 function switchDay(date) {
@@ -915,7 +838,7 @@ function exportBackup() {
 
 async function importBackup(file) {
   if (!file) return;
-  if (cloudState.configured && !cloudState.editor) {
+  if (cloudState.configured && !canEditData()) {
     alert('共享模式下，建议先用已授权邮箱登录后再导入，这样你可以把合并结果继续上传到云端。');
     dom.importDataInput.value = '';
     return;
@@ -937,7 +860,7 @@ async function importBackup(file) {
   render();
   updateSyncUI();
 
-  if (cloudState.configured && cloudState.editor) {
+  if (cloudState.configured && canEditData()) {
     const shouldUpload = confirm('备份已经合并到当前页面。要不要立刻用这份结果覆盖云端共享数据？');
     if (shouldUpload) {
       await replaceCloudWithCurrentState(true);
@@ -962,7 +885,7 @@ function restoreStoredLocalBackup() {
   render();
   updateSyncUI();
 
-  if (cloudState.configured && cloudState.editor) {
+  if (cloudState.configured && canEditData()) {
     alert('本机旧数据已经恢复到当前页面。请确认无误后点击“用当前页面覆盖云端”，把它并入共享数据。');
   } else {
     alert('本机旧数据已经恢复到当前页面。登录编辑身份后，可以再上传到云端。');
@@ -1046,6 +969,9 @@ function formatCloudError(error) {
   const text = error.message || String(error);
   if (/relation .* does not exist/i.test(text)) {
     return 'Supabase 里的数据表还没创建。先运行仓库里的 `supabase-setup.sql`，再刷新网页。';
+  }
+  if (/row-level security|permission denied|violates row-level security/i.test(text)) {
+    return '当前登录邮箱还没有通过 Supabase 的编辑权限校验。你先把这条报错截给我，我继续帮你排白名单或 RLS。';
   }
   return text;
 }
@@ -1201,7 +1127,7 @@ async function requireCloudEdit(actionLabel) {
     alert(`现在还没连上共享数据，暂时不能${actionLabel}。先把 Supabase 配置和数据表跑通，再试一次。`);
     return false;
   }
-  if (!cloudState.editor) {
+  if (!hasCloudSession()) {
     alert(`当前页面是共享只读模式，不能${actionLabel}。请用已授权邮箱登录。`);
     return false;
   }
