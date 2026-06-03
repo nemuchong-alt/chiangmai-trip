@@ -282,6 +282,15 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
 
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || '').trim());
+}
+
+function withOptionalUuidId(payload, id) {
+  if (!isUuid(id)) return { ...payload };
+  return { id, ...payload };
+}
+
 function normalizeTips(rawTips) {
   if (!Array.isArray(rawTips)) return undefined;
   const tips = rawTips
@@ -897,8 +906,7 @@ function buildCloudTripRows() {
   DAY_KEYS.forEach(date => {
     if (date === 'prep') return;
     (itinerary[date] || []).forEach(item => {
-      rows.push({
-        id: item.id,
+      rows.push(withOptionalUuidId({
         date_key: date,
         time_text: item.time || null,
         title: item.title,
@@ -906,7 +914,7 @@ function buildCloudTripRows() {
         description_text: item.desc || null,
         tips: item.tips || null,
         dist: item.dist || null,
-      });
+      }, item.id));
     });
   });
   return rows;
@@ -916,14 +924,13 @@ function buildCloudPrepRows() {
   const rows = [];
   ['toBring', 'toBuy'].forEach(category => {
     (prepTodos[category] || []).forEach((todo, index) => {
-      rows.push({
-        id: todo.id,
+      rows.push(withOptionalUuidId({
         category,
         title: todo.title,
         note: todo.note || '',
         done: Boolean(todo.done),
         sort_order: index,
-      });
+      }, todo.id));
     });
   });
   return rows;
@@ -969,6 +976,9 @@ function formatCloudError(error) {
   const text = error.message || String(error);
   if (/relation .* does not exist/i.test(text)) {
     return 'Supabase 里的数据表还没创建。先运行仓库里的 `supabase-setup.sql`，再刷新网页。';
+  }
+  if (/invalid input syntax for type uuid/i.test(text)) {
+    return '本地旧数据的 id 格式和 Supabase 的 uuid 要求不一致。我已经补兼容修复；刷新到最新版页面后再试一次即可。';
   }
   if (/row-level security|permission denied|violates row-level security/i.test(text)) {
     return '当前登录邮箱还没有通过 Supabase 的编辑权限校验。你先把这条报错截给我，我继续帮你排白名单或 RLS。';
@@ -1230,14 +1240,13 @@ async function saveItem() {
     }
 
     await runCloudMutation('添加行前准备', async () => {
-      const response = await supabaseClient.from(CLOUD_TABLES.prepTodos).insert([{
-        id: todo.id,
+      const response = await supabaseClient.from(CLOUD_TABLES.prepTodos).insert([withOptionalUuidId({
         category,
         title: todo.title,
         note: todo.note,
         done: false,
         sort_order: (prepTodos[category] || []).length,
-      }]);
+      }, todo.id)]);
       if (response.error) throw response.error;
     }, () => {
       dom.editTitle.value = '';
@@ -1272,8 +1281,7 @@ async function saveItem() {
   }
 
   await runCloudMutation('添加安排', async () => {
-    const response = await supabaseClient.from(CLOUD_TABLES.tripItems).insert([{
-      id: item.id,
+    const response = await supabaseClient.from(CLOUD_TABLES.tripItems).insert([withOptionalUuidId({
       date_key: date,
       time_text: item.time || null,
       title: item.title,
@@ -1281,7 +1289,7 @@ async function saveItem() {
       description_text: item.desc || null,
       tips: item.tips || null,
       dist: item.dist || null,
-    }]);
+    }, item.id)]);
     if (response.error) throw response.error;
   }, () => {
     resetEditForm();
@@ -1357,14 +1365,13 @@ async function addPrepInline(category, title) {
   }
 
   await runCloudMutation('添加行前准备', async () => {
-    const response = await supabaseClient.from(CLOUD_TABLES.prepTodos).insert([{
-      id: todo.id,
+    const response = await supabaseClient.from(CLOUD_TABLES.prepTodos).insert([withOptionalUuidId({
       category,
       title: todo.title,
       note: '',
       done: false,
       sort_order: (prepTodos[category] || []).length,
-    }]);
+    }, todo.id)]);
     if (response.error) throw response.error;
   });
 }
