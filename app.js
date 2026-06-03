@@ -94,6 +94,7 @@ const STORAGE_KEYS = {
   prep: 'chiangmai_prep',
   prepRecovered: 'chiangmai_prep_recovered_v1',
   localBackup: 'chiangmai_pre_cloud_backup_v1',
+  editorEmail: 'chiangmai_editor_email_v1',
 };
 
 const CLOUD_TABLES = {
@@ -124,6 +125,11 @@ const dom = {
   editBike: document.getElementById('editBike'),
   editItemList: document.getElementById('editItemList'),
   itemCount: document.getElementById('item-count'),
+  authOverlay: document.getElementById('authOverlay'),
+  authPanel: document.getElementById('authPanel'),
+  authEmail: document.getElementById('authEmail'),
+  btnAuthCancel: document.getElementById('btnAuthCancel'),
+  btnAuthSend: document.getElementById('btnAuthSend'),
   moveOverlay: document.getElementById('moveOverlay'),
   movePanel: document.getElementById('movePanel'),
   moveItemTitle: document.getElementById('moveItemTitle'),
@@ -271,6 +277,20 @@ function makeId(prefix = '') {
     return `${prefix}${window.crypto.randomUUID()}`;
   }
   return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function readStoredEditorEmail() {
+  return String(localStorage.getItem(STORAGE_KEYS.editorEmail) || '').trim();
+}
+
+function writeStoredEditorEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) return;
+  localStorage.setItem(STORAGE_KEYS.editorEmail, normalized);
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 }
 
 function normalizeTips(rawTips) {
@@ -763,6 +783,24 @@ function closeEditPanel() {
   dom.fabAdd.style.display = canEditData() ? 'flex' : 'none';
 }
 
+function openAuthPanel() {
+  const suggestedEmail = cloudState.userEmail || readStoredEditorEmail();
+  dom.authEmail.value = suggestedEmail;
+  dom.authOverlay.classList.add('active');
+  dom.authPanel.classList.add('active');
+  dom.authPanel.style.display = 'block';
+  window.setTimeout(() => {
+    dom.authEmail.focus();
+    dom.authEmail.select();
+  }, 30);
+}
+
+function closeAuthPanel() {
+  dom.authOverlay.classList.remove('active');
+  dom.authPanel.classList.remove('active');
+  dom.authPanel.style.display = 'none';
+}
+
 function updateEditItemList() {
   if (selectedEditDate === 'prep') {
     dom.editItemList.innerHTML = '<div style="font-size:13px;color:#bbb;padding:8px 0;">行前准备建议直接在当前页勾选、删除或回车添加。</div>';
@@ -1034,6 +1072,10 @@ async function refreshSessionState(session = null) {
 
   cloudState.session = currentSession;
   cloudState.userEmail = currentSession?.user?.email || '';
+  if (cloudState.userEmail) {
+    writeStoredEditorEmail(cloudState.userEmail);
+    closeAuthPanel();
+  }
   cloudState.editor = currentSession?.user?.email
     ? await refreshEditorPermission(currentSession.user.email)
     : false;
@@ -1569,21 +1611,44 @@ async function handleCloudAuth() {
     return;
   }
 
-  const email = window.prompt('请输入你在 Supabase 里准备作为编辑身份登录的邮箱：');
-  if (!email) return;
+  openAuthPanel();
+}
 
-  const redirectTo = cloudConfig.redirectTo || window.location.href.split('#')[0];
-  const { error } = await supabaseClient.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: redirectTo,
-    },
-  });
-  if (error) {
-    alert(`发送登录邮件失败：${formatCloudError(error)}`);
+async function submitCloudAuth() {
+  const email = dom.authEmail.value.trim().toLowerCase();
+  if (!email) {
+    dom.authEmail.focus();
     return;
   }
-  alert('登录链接已经发到邮箱。你在手机上点开 magic link 之后，这个网页就会切到可编辑状态。');
+  if (!isValidEmail(email)) {
+    alert('请输入完整邮箱，例如 nemuchong@gmail.com。');
+    dom.authEmail.focus();
+    dom.authEmail.select();
+    return;
+  }
+
+  dom.btnAuthSend.disabled = true;
+  dom.btnAuthSend.textContent = '发送中...';
+
+  try {
+    const redirectTo = cloudConfig.redirectTo || window.location.href.split('#')[0];
+    const { error } = await supabaseClient.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: redirectTo,
+      },
+    });
+    if (error) {
+      alert(`发送登录邮件失败：${formatCloudError(error)}`);
+      return;
+    }
+    writeStoredEditorEmail(email);
+    closeAuthPanel();
+    alert('登录链接已经发到邮箱。你在手机上点开 magic link 之后，这个网页就会切到可编辑状态。');
+  } finally {
+    dom.btnAuthSend.disabled = false;
+    dom.btnAuthSend.textContent = '发送登录邮件';
+  }
 }
 
 function bindEvents() {
@@ -1705,10 +1770,20 @@ function bindEvents() {
       event.target.value = '';
       renderTipsEditList();
     }
+
+    if (event.key === 'Enter' && event.target.id === 'authEmail') {
+      event.preventDefault();
+      void submitCloudAuth();
+    }
   });
 
   dom.btnCloudAuth.addEventListener('click', () => {
     void handleCloudAuth();
+  });
+  dom.authOverlay.addEventListener('click', closeAuthPanel);
+  dom.btnAuthCancel.addEventListener('click', closeAuthPanel);
+  dom.btnAuthSend.addEventListener('click', () => {
+    void submitCloudAuth();
   });
 
   dom.btnCloudRefresh.addEventListener('click', () => {

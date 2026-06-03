@@ -644,6 +644,12 @@
     opacity: 0;
     cursor: pointer;
   }
+  .auth-note {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-light);
+    margin-bottom: 14px;
+  }
 
   /* Source footer */
   .source-bar {
@@ -717,6 +723,20 @@
       </label>
     </div>
   </section>
+
+  <div id="authOverlay" class="edit-overlay"></div>
+  <div id="authPanel" class="edit-panel" style="display:none;padding-top:20px">
+    <h3 style="margin-bottom:8px">编辑登录</h3>
+    <p class="auth-note">输入已授权邮箱，我们会发一封 magic link 到这个邮箱。建议直接填完整邮箱，例如 nemuchong@gmail.com。</p>
+    <div class="form-group">
+      <label for="authEmail">邮箱</label>
+      <input type="email" id="authEmail" inputmode="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="name@example.com">
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" id="btnAuthCancel" type="button">取消</button>
+      <button class="btn btn-primary" id="btnAuthSend" type="button">发送登录邮件</button>
+    </div>
+  </div>
 
   <div id="dayContents"></div>
 
