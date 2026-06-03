@@ -554,6 +554,97 @@
   .cat-option[data-cat="activity"].selected { border-color: var(--green); background: var(--green-light); color: var(--green); }
   .cat-option[data-cat="info"].selected { border-color: #aaa; background: #f5f5f5; color: #666; }
 
+  /* Sync card */
+  .sync-card {
+    margin: 14px 16px 6px;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, #fff9ef, #fff);
+    border: 1px solid #f1ddbd;
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .sync-card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .sync-card h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #8b5e34;
+    margin-bottom: 4px;
+  }
+  .sync-card p {
+    font-size: 12px;
+    line-height: 1.6;
+    color: #7d6a56;
+  }
+  .sync-detail {
+    margin-top: 4px;
+    color: #99836c;
+  }
+  .sync-pill {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 7px 10px;
+    border-radius: 999px;
+    color: #7f5b39;
+    background: #fff1d8;
+    border: 1px solid #f0d4ab;
+  }
+  .sync-pill-ok {
+    color: var(--green);
+    background: var(--green-light);
+    border-color: #cbe2d2;
+  }
+  .sync-pill-readonly {
+    color: var(--teal);
+    background: var(--teal-light);
+    border-color: #cce6e6;
+  }
+  .sync-pill-warn {
+    color: #b5543a;
+    background: #fff0eb;
+    border-color: #f0c9bc;
+  }
+  .sync-pill-loading {
+    color: var(--purple);
+    background: var(--purple-light);
+    border-color: #dbcff0;
+  }
+  .sync-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .sync-btn {
+    appearance: none;
+    border: 1px solid #e4cdaa;
+    background: #fff;
+    color: #7f5b39;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .sync-btn:active { opacity: 0.8; }
+  .sync-file-btn {
+    position: relative;
+    overflow: hidden;
+  }
+  .sync-file-btn input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
   /* Source footer */
   .source-bar {
     padding: 16px 20px;
@@ -604,6 +695,28 @@
     </div>
     <div class="day-tabs" id="dayTabs"></div>
   </header>
+
+  <section class="sync-card">
+    <div class="sync-card-top">
+      <div>
+        <h3>协同同步</h3>
+        <p id="syncStatus">当前是本地模式。</p>
+        <p id="syncDetail" class="sync-detail">还没有连接共享数据。</p>
+      </div>
+      <div class="sync-pill" id="syncPill">本地模式</div>
+    </div>
+    <div class="sync-actions">
+      <button class="sync-btn" id="btnCloudAuth" type="button">编辑登录</button>
+      <button class="sync-btn" id="btnCloudRefresh" type="button">从云端刷新</button>
+      <button class="sync-btn" id="btnCloudUpload" type="button">上传当前数据到云端</button>
+      <button class="sync-btn" id="btnRestoreLocalBackup" type="button">恢复本机旧备份</button>
+      <button class="sync-btn" id="btnExportData" type="button">导出备份</button>
+      <label class="sync-btn sync-file-btn">
+        导入备份
+        <input id="importDataInput" type="file" accept="application/json">
+      </label>
+    </div>
+  </section>
 
   <div id="dayContents"></div>
 
@@ -717,840 +830,8 @@
   <div id="editItemList"></div>
 </div>
 
-<script>
-// ─── 数据模型 ───
-const DAYS = [
-  { date: 'prep', label: '行前准备', weekday: '' },
-  { date: '2026-06-21', label: '6月21日', weekday: '周日' },
-  { date: '2026-06-22', label: '6月22日', weekday: '周一' },
-  { date: '2026-06-23', label: '6月23日', weekday: '周二' },
-  { date: '2026-06-24', label: '6月24日', weekday: '周三' },
-  { date: '2026-06-25', label: '6月25日', weekday: '周四' },
-  { date: 'pending', label: 'P人待定', weekday: '' },
-];
-
-const CATEGORY_MAP = {
-  transport: { label: '交通', color: 'var(--teal)', bg: 'var(--teal-light)', tag: 'tag-transport' },
-  food:     { label: '美食', color: 'var(--yellow)', bg: 'var(--yellow-light)', tag: 'tag-food' },
-  market:   { label: '市集', color: 'var(--purple)', bg: 'var(--purple-light)', tag: 'tag-market' },
-  activity: { label: '运动', color: 'var(--green)', bg: 'var(--green-light)', tag: 'tag-activity' },
-  info:     { label: '备注', color: '#888', bg: '#f0f0f0', tag: 'tag-info' },
-};
-
-// 默认行程数据（网站模板的一部分）
-const DEFAULT_ITINERARY = {
-  '2026-06-21': [
-    { time: '10:10', title: 'MU205 上海 → 清迈', category: 'transport', desc: '上海浦东 T1 出发，预计 13:25 抵达清迈国际机场', dist: { bike: 15 }, tips: [
-      '出机场换少量泰铢够当天用即可，市区汇率更好',
-      'Grab 或 Bolt 打车去古城，约 150-200 铢',
-    ]},
-    { time: '17:00', title: '周日夜市（Sunday Walking Street）', category: 'market', desc: '17:00 开市，22:00 收摊，周六日规模较大\n塔佩门(Tha Phae Gate) → 帕辛寺(Wat Phra Singh)', dist: { walk: 8, bike: 5 }, tips: [
-      '主街 + 两侧寺庙空地的小吃摊',
-      '最热闹的传统夜市，手工艺品、小吃、按摩都有',
-    ]},
-  ],
-  '2026-06-22': [],
-  '2026-06-23': [
-    { time: '08:30', title: 'Teetee Elephant（大象营）', category: 'activity', desc: '集合地点：民宿\nTeetee Elephant 全包：接人 → 大象互动+散步，含交通、导游、午餐、门票', dist: { bike: 50 }, tips: [
-      '自备溯溪鞋，涉及到过河+爬山，园内仅提供拖鞋，不允许穿自己的运动鞋',
-      '不用担心衣服怕湿之类的，象营会提供宽大轻薄的衣服，最好穿一件短袖在里面',
-      '驱蚊水可以带一下，过河以后在山上偶尔会遇到黄蚂蚁爬到身上',
-    ]},
-    { time: '13:00', title: '蓝庙（Wat Rong Suea Ten）', category: 'activity', desc: '清迈市区南部，距古城约 30 分钟车程\n深蓝色外墙和精细木雕，游览约 30-40 分钟', dist: { bike: 30 }, tips: [
-      '着装要求：遮盖肩膀和膝盖（不能穿无袖、短裤/短裙）',
-      '室内可拍照，请保持安静',
-    ]},
-    { time: '14:30', title: '粘粘瀑布（Bua Tha Waterfall）', category: 'activity', desc: '距清迈约 30km，山林公园\n石灰华表面有特殊苔藓而"粘脚"，可攀爬上下，游览约 1-1.5 小时', dist: { bike: 45 }, tips: [
-      '穿防滑水鞋或拖鞋（现场可租借），赤脚也可',
-      '水温较低，注意浸泡时间',
-      '建议带一套换洗衣物',
-    ]},
-    { time: '16:30', title: '返回民宿（包车送回）', category: 'transport', desc: '包车送回民宿，当日行程结束', dist: { bike: 45 }},
-  ],
-  '2026-06-24': [
-    { time: '19:00', title: 'North Gate Jazz Co-Op', category: 'activity', desc: 'Sri Poom Rd，North Gate 旁（昌普门）\n每晚 19:00-00:00 现场 Jazz，免费入场，消费制', dist: { walk: 12, bike: 8 }, tips: [
-      '小卷毛约 21:30 出场，想坐好位子 19:30 前到，也可和老外拼桌',
-      '不在乎座位站着听，门口也能听',
-    ]},
-  ],
-  '2026-06-25': [
-    { time: '14:55', title: 'MU206 清迈 → 上海', category: 'transport', desc: '清迈国际机场出发，预计 20:00 抵达上海浦东 T1\n⚠️ 建议提前 2.5 小时到机场（国际航班值机+安检）', dist: { bike: 12 }, tips: [
-      '建议提前 2.5 小时到机场（国际航班）',
-      '清迈机场不大，办理值机后还有时间逛机场小店',
-      '带好护照和出境卡',
-    ]},
-  ],
-  pending: [
-    { title: '瑜伽课 Early Owls', category: 'activity', tips: [
-      '场馆很美，清迈最美的瑜伽馆',
-      'Google map上找到官网和联系方式，提前预约',
-    ]},
-    { title: '瑜伽课 Satva Yoga', category: 'activity', tips: [
-      '300泰铢/节',
-      'Alignment Yoga，老师非常专业，善用辅具进入体式',
-      '练完下来感觉全身被正骨了一番',
-      'Google map上找到官网和联系方式，提前预约',
-    ]},
-    { title: '打枪体验 333 Shooting Range Thaphae', category: 'activity', tips: [
-      '在古城内，室内场馆，玩得不够过瘾',
-    ]},
-    { title: '打枪体验 700Year Shooting Range', category: 'activity', tips: [
-      '提前2小时，在美团可购买套餐，套餐可共享',
-      '最好在下午3点，价格优惠很多',
-    ]},
-  ],
-};
-
-// 读取：优先用 localStorage，缺省值则用默认值
-function loadItinerary() {
-  try {
-    const saved = localStorage.getItem('chiangmai_itinerary');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      // 合并：用户数据 + 默认值里新增的天（如有）
-      const merged = { ...DEFAULT_ITINERARY };
-      Object.keys(parsed).forEach(date => {
-        merged[date] = parsed[date];
-      });
-      return merged;
-    }
-  } catch (e) {}
-  return JSON.parse(JSON.stringify(DEFAULT_ITINERARY));
-}
-
-// 保存到 localStorage
-function saveItinerary() {
-  try {
-    localStorage.setItem('chiangmai_itinerary', JSON.stringify(itinerary));
-  } catch (e) {}
-}
-
-// 运行时数据
-let itinerary = loadItinerary();
-
-// ─── 行前准备 Todo ───
-const DEFAULT_PREP_TODOS = {
-  toBring: [
-    { title: '护照', note: '', done: false },
-    { title: '现金/银行卡', note: '', done: false },
-  ],
-  toBuy: [
-    { title: '泰国电话卡*2', note: '', done: false },
-  ],
-};
-
-function loadPrepTodos() {
-  try {
-    const saved = localStorage.getItem('chiangmai_prep');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      // 兼容旧版单数组格式
-      if (Array.isArray(parsed)) return parsed;
-      return parsed;
-    }
-  } catch (e) {}
-  return JSON.parse(JSON.stringify(DEFAULT_PREP_TODOS));
-}
-
-function savePrepTodos() {
-  try {
-    localStorage.setItem('chiangmai_prep', JSON.stringify(prepTodos));
-  } catch (e) {}
-}
-
-let prepTodos = loadPrepTodos();
-// 兼容旧版 localStorage（单数组）→ 迁移
-if (Array.isArray(prepTodos)) {
-  prepTodos = { toBring: prepTodos, toBuy: [] };
-  savePrepTodos();
-}
-// 兼容：数据曾误写到 itinerary['prep']（旧版 saveItem 没有 prep 分支）
-if (itinerary['prep'] && itinerary['prep'].length > 0) {
-  itinerary['prep'].forEach(item => {
-    prepTodos.toBuy.push({ title: item.title, note: item.note || item.desc || '', done: false });
-  });
-  itinerary['prep'] = [];
-  saveItinerary();
-  savePrepTodos();
-}
-// 一次性恢复：找回之前丢失的“去银行换取20000泰铢”待办
-if (!localStorage.getItem('chiangmai_prep_recovered_v1')) {
-  const hasBankTodo = (prepTodos.toBring || []).concat(prepTodos.toBuy || []).some(item =>
-    (item.title || '').includes('去银行换取20000泰铢')
-  );
-  if (!hasBankTodo) {
-    prepTodos.toBuy.unshift({ title: '去银行换取20000泰铢', note: '', done: false });
-    savePrepTodos();
-  }
-  localStorage.setItem('chiangmai_prep_recovered_v1', '1');
-}
-// 每个地点到酒店的时间，walk=步行分钟，bike=摩托车分钟
-// 30分钟以内步行两者都显示，超过只显示摩托车时间
-const DIST_FROM_HOTEL = {
-  airport:     { walk: null, bike: 12, label: '机场' },
-  station:     { walk: null, bike: 18, label: '火车站' },
-  thatphae:    { walk: 8,  bike: 5,  label: '塔佩门' },
-  sundaymarket:{ walk: 8,  bike: 5,  label: '周日夜市' },
-  nightbazaar: { walk: 25, bike: 10, label: 'Night Bazaar' },
-  northgate:   { walk: 12, bike: 8,  label: 'North Gate' },
-  elephant:    { walk: null, bike: 50, label: '大象营' },
-  bluetemple:  { walk: null, bike: 30, label: '蓝庙' },
-  waterfall:   { walk: null, bike: 45, label: '粘粘瀑布' },
-};
-
-function formatDist(dist) {
-  if (!dist) return '';
-  if (dist.walk && dist.bike) {
-    return `步行 ${dist.walk} 分钟 / 摩托 ${dist.bike} 分钟`;
-  }
-  return `摩托 ${dist.bike} 分钟`;
-}
-
-// 根据行程描述匹配距离
-function guessDist(item) {
-  const t = item.title + (item.desc || '');
-  const d = item.dist;
-  if (d) return formatDist(d);
-  // 关键词匹配
-  if (/机场|MU205|MU206/.test(t)) return formatDist(DIST_FROM_HOTEL.airport);
-  if (/火车站|train/.test(t)) return formatDist(DIST_FROM_HOTEL.station);
-  if (/Tha Phae|塔佩门|周日夜市|Sunday Walking/.test(t)) return formatDist(DIST_FROM_HOTEL.sundaymarket);
-  if (/Night Bazaar|night.?bazaar/i.test(t)) return formatDist(DIST_FROM_HOTEL.nightbazaar);
-  if (/North Gate|爵士|Jazz/.test(t)) return formatDist(DIST_FROM_HOTEL.northgate);
-  if (/大象营|Elephant/.test(t)) return formatDist(DIST_FROM_HOTEL.elephant);
-  if (/蓝庙|Wat Rong|Bluetemple/i.test(t)) return formatDist(DIST_FROM_HOTEL.bluetemple);
-  if (/瀑布|Waterfall/.test(t)) return formatDist(DIST_FROM_HOTEL.waterfall);
-  return '';
-}
-
-// 每天概览距离：当天第一个行程 → 酒店（去程），最后一个行程 → 酒店（回程）
-function getDayDistSummary(items) {
-  if (!items || items.length === 0) return '';
-  const sorted = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-  const first = sorted[0];
-  const last  = sorted[sorted.length - 1];
-  const firstDist = guessDist(first);
-  const lastDist  = guessDist(last);
-  if (!firstDist && !lastDist) return '';
-  if (first === last) return firstDist ? `距酒店 ${firstDist}` : '';
-  const parts = [];
-  if (firstDist) parts.push(`去程 ${firstDist}`);
-  if (lastDist)  parts.push(`回程 ${lastDist}`);
-  return parts.join(' · ');
-}
-
-// ─── 渲染 ───
-function render() {
-  const tabs = document.getElementById('dayTabs');
-  const contents = document.getElementById('dayContents');
-  tabs.innerHTML = '';
-  contents.innerHTML = '';
-
-  DAYS.forEach((day, i) => {
-    const items = itinerary[day.date] || [];
-    const hasContent = items.length > 0;
-
-    // Tab
-    const tab = document.createElement('div');
-    tab.className = 'day-tab' + (i === 0 ? ' active' : '') + (hasContent ? ' has-content' : '');
-    tab.textContent = day.date === 'pending' ? 'P人待定' : (day.date === 'prep' ? '行前准备' : `${day.label.replace('6月', '')} ${day.weekday}`);
-    tab.dataset.date = day.date;
-    tab.addEventListener('click', () => switchDay(day.date));
-    tabs.appendChild(tab);
-
-    // Content
-    const section = document.createElement('div');
-    section.className = 'day-content' + (i === 0 ? ' active' : '');
-    section.id = `day-${day.date}`;
-    section.innerHTML = renderDayContent(day, items);
-    contents.appendChild(section);
-  });
-
-  updateItemCount();
-  updateEditItemList();
-}
-
-function renderDayContent(day, items) {
-  // 行前准备
-  if (day.date === 'prep') {
-    const renderSection = (cat, label, color) => {
-      const items = prepTodos[cat] || [];
-      let ih = '';
-      if (items.length === 0) {
-        ih = `<div style="text-align:center;padding:20px;color:#ddd;font-size:13px">暂无</div>`;
-      } else {
-        items.forEach((todo, i) => {
-          const done = todo.done ? 'checked' : '';
-          const doneCls = todo.done ? 'done' : '';
-          ih += `<div class="prep-todo-item" draggable="true" data-cat="${cat}" data-i="${i}">
-            <div class="prep-check ${done}" data-cat="${cat}" data-i="${i}"></div>
-            <div class="prep-todo-text ${doneCls}">
-              <div class="prep-todo-title">${todo.title}</div>
-              ${todo.note ? `<div class="prep-todo-note">${todo.note}</div>` : ''}
-            </div>
-            <div class="prep-drag-handle" title="拖动排序">☰</div>
-            <div class="prep-delete" data-cat="${cat}" data-i="${i}">×</div>
-          </div>`;
-        });
-      }
-      return `<div class="prep-section" data-cat="${cat}">
-        <div class="prep-section-header" style="border-left:3px solid ${color}">
-          <span style="font-size:12px;font-weight:600;color:${color}">${label}</span>
-        </div>
-        <div class="prep-section-items" data-cat="${cat}">${ih}</div>
-        <div class="prep-add-inline" data-cat="${cat}">
-          <input type="text" class="prep-inline-input" data-cat="${cat}" placeholder="+ 添加${label}">
-        </div>
-      </div>`;
-    };
-
-    return `<div class="day-label">行前准备</div>
-      <div style="padding:0 16px">${renderSection('toBring', '需要带', 'var(--teal)')}${renderSection('toBuy', '需要买', 'var(--yellow)')}</div>`;
-  }
-
-  // P人待定
-  if (day.date === 'pending') {
-    let ph = `<div class="day-label">待安排</div>`;
-    if (items.length === 0) {
-      ph += `<div class="empty-day">
-        <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-        <div>还没有待定安排，点右下角 + 添加</div>
-      </div>`;
-    } else {
-      items.forEach((item, i) => {
-        const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.info;
-        const tipsTitle = '💡 小贴士';
-        ph += `
-          <div class="pending-item" data-i="${i}">
-            <div class="timeline-item type-${item.category}">
-              <div class="item-header">
-                <span class="item-time">${item.time || '—'}</span>
-                <span class="item-title">${item.title}</span>
-              </div>
-              ${item.desc ? `<div class="item-desc">${item.desc.replace(/\n/g, '<br>')}</div>` : ''}
-              <span class="item-tag ${cat.tag}">${cat.label}</span>
-            </div>
-            <button class="pending-move-btn" data-i="${i}">安排到日期 →</button>
-            ${item.tips ? `<div class="tips-card" data-date="pending" data-i="${i}"><h4>${tipsTitle}<button class="tips-edit-btn" data-date="pending" data-i="${i}">编辑</button></h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
-      });
-    }
-    return ph;
-  }
-
-  // 普通日期
-  const hotelHtml = `<div class="hotel-card">
-    <div class="hotel-icon">🏨</div>
-    <div class="hotel-info">
-      <div class="hotel-name">普拉辛格床酒店（仅成人）</div>
-      <div class="hotel-addr">📍 古城内，Ratchamanka 路</div>
-      <div class="hotel-meta">🚖 距机场 12 分钟 · 距火车站 18 分钟</div>
-    </div>
-  </div>`;
-
-  const isArrivalOrDeparture = day.date === '2026-06-21' || day.date === '2026-06-25';
-
-  let html = `<div class="day-label">${day.label} · ${day.weekday}</div>`;
-
-  // 到达日和返程日，酒店卡片放顶部
-  if (isArrivalOrDeparture) html += hotelHtml;
-
-  // 行程
-  if (items.length === 0) {
-    html += `<div class="empty-day">
-      <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-      <div>还没有安排，点右下角 + 添加</div>
-    </div>`;
-  } else {
-    const sortedItems = [...items].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-    sortedItems.forEach(item => {
-      const idx = items.indexOf(item); // 原始数组索引
-      const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.info;
-      const isArr = item.title.includes('→') && item.title.includes('清迈') && !item.title.includes('上海');
-      const isDep = item.title.includes('→') && item.title.includes('上海');
-      const tipsTitle = isDep ? '✈️ 返程小贴士' : (isArr ? '💡 落地小贴士' : '💡 小贴士');
-      html += `
-        <div class="timeline-item type-${item.category}">
-          <div class="item-header">
-            <span class="item-time">${item.time || '—'}</span>
-            <span class="item-title">${item.title}</span>
-          </div>
-          ${item.desc ? `<div class="item-desc">${item.desc.replace(/\n/g, '<br>')}</div>` : ''}
-          <span class="item-tag ${cat.tag}">${cat.label}</span>
-        </div>
-        ${item.tips ? `<div class="tips-card" data-date="${day.date}" data-i="${idx}"><h4>${tipsTitle}<button class="tips-edit-btn" data-date="${day.date}" data-i="${idx}">编辑</button></h4><ul>${item.tips.map(t => `<li>${t}</li>`).join('')}</ul></div>` : ''}`;
-    });
-  }
-
-  // 其他天，酒店卡片放底部
-  if (!isArrivalOrDeparture) html += hotelHtml;
-
-  return html;
-}
-
-function renderMarketInfo(date, items) {
-  const distLine = getDayDistSummary(items);
-  const markets = {
-    '2026-06-21': `
-      <div class="market-info">
-        <h4>🏍️ 6月21日 · 到达日</h4>
-        <p>上午出发 → 下午抵达 → 傍晚逛周日夜市${distLine ? '<br>' + distLine : ''}</p>
-      </div>`,
-    '2026-06-22': `
-      <div class="market-info">
-        <h4>💡 周一无大型市集</h4>
-        <p>工作日清迈市集大多休息，可安排白天活动或晚上逛 Night Bazaar${distLine ? '<br>' + distLine : ''}</p>
-      </div>`,
-    '2026-06-23': `
-      <div class="market-info">
-        <h4>🚌 6月23日 · 包车日</h4>
-        <p>08:30 大象营 → 13:00 蓝庙 → 14:30 粘粘瀑布 → 约 16:30 回民宿${distLine ? '<br>' + distLine : ''}</p>
-      </div>`,
-    '2026-06-24': `
-      <div class="market-info">
-        <h4>🎷 6月24日 · 古城夜</h4>
-        <p>19:00 North Gate Jazz${distLine ? '<br>' + distLine : ''}</p>
-      </div>`,
-    '2026-06-25': `
-      <div class="market-info">
-        <h4>✈️ 6月25日 · 返程日</h4>
-        <p>${distLine || '酒店 → 机场'}</p>
-      </div>`,
-  };
-  return markets[date] || '';
-}
-
-function switchDay(date) {
-  document.querySelectorAll('.day-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.date === date);
-  });
-  document.querySelectorAll('.day-content').forEach(c => {
-    c.classList.toggle('active', c.id === `day-${date}`);
-  });
-  document.querySelectorAll('.day-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.date === date);
-  });
-  // Re-evaluate active tab
-  document.querySelectorAll('.day-content').forEach(c => {
-    const isActive = c.id === `day-${date}`;
-    c.classList.toggle('active', isActive);
-  });
-}
-
-function updateItemCount() {
-  let total = 0;
-  Object.values(itinerary).forEach(arr => total += arr.length);
-  document.getElementById('item-count').textContent = total;
-
-  // Update tab dots
-  DAYS.forEach(day => {
-    const items = itinerary[day.date] || [];
-    const tab = document.querySelector(`.day-tab[data-date="${day.date}"]`);
-    if (tab) tab.classList.toggle('has-content', items.length > 0);
-  });
-}
-
-// ─── 编辑面板 ───
-let currentEditCat = 'info';
-let selectedEditDate = DAYS[0].date;
-
-function openEditPanel() {
-  document.getElementById('editOverlay').classList.add('active');
-  document.getElementById('editPanel').classList.add('active');
-  document.getElementById('fabAdd').style.display = 'none';
-
-  // Populate day select
-  const sel = document.getElementById('editDay');
-  sel.innerHTML = DAYS.map(d => {
-    if (d.date === 'pending') return `<option value="pending">P人待定</option>`;
-    if (d.date === 'prep') return `<option value="prep">行前准备</option>`;
-    return `<option value="${d.date}">${d.label} ${d.weekday}</option>`;
-  }).join('');
-  sel.value = selectedEditDate;
-
-  // Reset form
-  document.getElementById('editTime').value = '';
-  document.getElementById('editTitle').value = '';
-  document.getElementById('editDesc').value = '';
-  document.getElementById('editTips').value = '';
-  document.getElementById('editWalk').value = '';
-  document.getElementById('editBike').value = '';
-  document.querySelectorAll('.cat-option').forEach(o => o.classList.remove('selected'));
-  document.querySelector(`.cat-option[data-cat="info"]`).classList.add('selected');
-  currentEditCat = 'info';
-
-  // 行前准备分类显示/隐藏
-  const isPrep = selectedEditDate === 'prep';
-  document.getElementById('editPrepCatGroup').style.display = isPrep ? 'block' : 'none';
-  if (isPrep) {
-    document.getElementById('editTime').parentElement.style.display = 'none';
-    document.getElementById('editWalk').parentElement.style.display = 'none';
-    document.getElementById('editBike').parentElement.style.display = 'none';
-    document.getElementById('editTips').parentElement.style.display = 'none';
-    document.querySelector('.category-picker').style.display = 'none';
-  } else {
-    document.getElementById('editTime').parentElement.style.display = '';
-    document.getElementById('editWalk').parentElement.style.display = '';
-    document.getElementById('editBike').parentElement.style.display = '';
-    document.getElementById('editTips').parentElement.style.display = '';
-    document.querySelector('.category-picker').style.display = '';
-  }
-
-  updateEditItemList();
-}
-
-function closeEditPanel() {
-  document.getElementById('editOverlay').classList.remove('active');
-  document.getElementById('editPanel').classList.remove('active');
-  document.getElementById('fabAdd').style.display = 'flex';
-}
-
-function updateEditItemList() {
-  const list = document.getElementById('editItemList');
-  const items = itinerary[selectedEditDate] || [];
-  if (items.length === 0) {
-    list.innerHTML = '<div style="font-size:13px;color:#bbb;padding:8px 0;">暂无安排</div>';
-    return;
-  }
-  list.innerHTML = items
-    .sort((a, b) => (a.time || '').localeCompare(b.time || ''))
-    .map((item, i) => {
-      const cat = CATEGORY_MAP[item.category] || CATEGORY_MAP.info;
-      return `<div class="edit-item-row">
-        <span>${item.time || '—'} ${item.title}</span>
-        <button class="del-btn" data-date="${selectedEditDate}" data-index="${i}" title="删除">×</button>
-      </div>`;
-    }).join('');
-
-  list.querySelectorAll('.del-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const d = btn.dataset.date;
-      const idx = parseInt(btn.dataset.index);
-      itinerary[d].splice(idx, 1);
-      saveItinerary();
-      render();
-    });
-  });
-}
-
-function saveItem() {
-  const date = document.getElementById('editDay').value;
-  const time = document.getElementById('editTime').value;
-  const title = document.getElementById('editTitle').value.trim();
-  const desc = document.getElementById('editDesc').value.trim();
-
-  if (!title) {
-    document.getElementById('editTitle').focus();
-    return;
-  }
-
-  // 行前准备 → 写入 prepTodos（需选分类）
-  if (date === 'prep') {
-    const title = document.getElementById('editTitle').value.trim();
-    const note = document.getElementById('editDesc').value.trim();
-    const cat = document.getElementById('editPrepCat').value; // 'toBring' | 'toBuy'
-    if (!title) {
-      document.getElementById('editTitle').focus();
-      return;
-    }
-    prepTodos[cat].push({ title, note, done: false });
-    savePrepTodos();
-    document.getElementById('editTitle').value = '';
-    document.getElementById('editDesc').value = '';
-    render();
-    openEditPanel();
-    return;
-  }
-
-  if (!itinerary[date]) itinerary[date] = [];
-  const tipsRaw = document.getElementById('editTips').value.trim();
-  const tips = tipsRaw ? tipsRaw.split('\n').map(t => t.trim()).filter(Boolean) : [];
-  const walk = parseInt(document.getElementById('editWalk').value);
-  const bike = parseInt(document.getElementById('editBike').value);
-  const dist = (walk || bike) ? { walk: walk || null, bike: bike || null } : undefined;
-  itinerary[date].push({ time, title, category: currentEditCat, desc, tips: tips.length ? tips : undefined, dist });
-  saveItinerary();
-
-  // Reset form
-  document.getElementById('editTime').value = '';
-  document.getElementById('editTitle').value = '';
-  document.getElementById('editDesc').value = '';
-  document.getElementById('editTips').value = '';
-  document.getElementById('editWalk').value = '';
-  document.getElementById('editBike').value = '';
-
-  render();
-  // Re-open panel to show updated list
-  openEditPanel();
-}
-
-// ─── 事件绑定 ───
-document.getElementById('fabAdd').addEventListener('click', openEditPanel);
-document.getElementById('editOverlay').addEventListener('click', closeEditPanel);
-document.getElementById('btnCancel').addEventListener('click', closeEditPanel);
-document.getElementById('btnSave').addEventListener('click', saveItem);
-
-document.querySelectorAll('.cat-option').forEach(opt => {
-  opt.addEventListener('click', () => {
-    document.querySelectorAll('.cat-option').forEach(o => o.classList.remove('selected'));
-    opt.classList.add('selected');
-    currentEditCat = opt.dataset.cat;
-  });
-});
-
-document.getElementById('editDay').addEventListener('change', e => {
-  selectedEditDate = e.target.value;
-  const isPrep = selectedEditDate === 'prep';
-  document.getElementById('editPrepCatGroup').style.display = isPrep ? 'block' : 'none';
-  if (isPrep) {
-    document.getElementById('editTime').parentElement.style.display = 'none';
-    document.getElementById('editWalk').parentElement.style.display = 'none';
-    document.getElementById('editBike').parentElement.style.display = 'none';
-    document.getElementById('editTips').parentElement.style.display = 'none';
-    document.querySelector('.category-picker').style.display = 'none';
-  } else {
-    document.getElementById('editTime').parentElement.style.display = '';
-    document.getElementById('editWalk').parentElement.style.display = '';
-    document.getElementById('editBike').parentElement.style.display = '';
-    document.getElementById('editTips').parentElement.style.display = '';
-    document.querySelector('.category-picker').style.display = '';
-  }
-  updateEditItemList();
-});
-
-// 行前准备页面事件（动态渲染，需每次 render 后重新绑定）
-document.addEventListener('click', e => {
-  // 复选框切换
-  if (e.target.classList.contains('prep-check')) {
-    const cat = e.target.dataset.cat;
-    const i = parseInt(e.target.dataset.i);
-    prepTodos[cat][i].done = !prepTodos[cat][i].done;
-    savePrepTodos();
-    render();
-  }
-  // 删除按钮
-  if (e.target.classList.contains('prep-delete')) {
-    const cat = e.target.dataset.cat;
-    const i = parseInt(e.target.dataset.i);
-    prepTodos[cat].splice(i, 1);
-    savePrepTodos();
-    render();
-  }
-});
-
-// 拖拽排序
-document.addEventListener('dragstart', e => {
-  if (e.target.classList.contains('prep-todo-item')) {
-    e.dataTransfer.setData('text/plain', JSON.stringify({
-      cat: e.target.dataset.cat,
-      i: parseInt(e.target.dataset.i),
-    }));
-    e.target.style.opacity = '0.4';
-  }
-});
-document.addEventListener('dragend', e => {
-  if (e.target.classList.contains('prep-todo-item')) {
-    e.target.style.opacity = '';
-  }
-});
-document.addEventListener('dragover', e => {
-  const item = e.target.closest('.prep-todo-item');
-  if (item) {
-    e.preventDefault();
-    item.style.background = 'var(--green-light)';
-  }
-});
-document.addEventListener('dragleave', e => {
-  const item = e.target.closest('.prep-todo-item');
-  if (item) item.style.background = '';
-});
-document.addEventListener('drop', e => {
-  const targetItem = e.target.closest('.prep-todo-item');
-  if (!targetItem) return;
-  e.preventDefault();
-  targetItem.style.background = '';
-  try {
-    const { cat, i } = JSON.parse(e.dataTransfer.getData('text/plain'));
-    const toCat = targetItem.dataset.cat;
-    const toI = parseInt(targetItem.dataset.i);
-    if (cat !== toCat) return; // 只允许同分类内拖动
-    const [moved] = prepTodos[cat].splice(i, 1);
-    prepTodos[cat].splice(toI, 0, moved);
-    savePrepTodos();
-    render();
-  } catch (_) {}
-});
-
-// 行前准备内联输入框回车添加
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && e.target.classList.contains('prep-inline-input')) {
-    const input = e.target;
-    const title = input.value.trim();
-    if (!title) return;
-    const cat = input.dataset.cat;
-    prepTodos[cat].push({ title, note: '', done: false });
-    savePrepTodos();
-    input.value = '';
-    render();
-  }
-});
-
-// ─── 待定事项迁移 ───
-let pendingMoveIndex = null;
-
-function openMovePanel(itemIndex) {
-  pendingMoveIndex = itemIndex;
-  const item = itinerary.pending[itemIndex];
-  document.getElementById('moveItemTitle').textContent = item ? item.title : '';
-  document.getElementById('moveTime').value = item && item.time ? item.time : '09:00';
-
-  // 填充日期下拉
-  const daySelect = document.getElementById('moveDay');
-  const realDays = DAYS.filter(d => d.date !== 'prep' && d.date !== 'pending');
-  daySelect.innerHTML = realDays.map(d =>
-    `<option value="${d.date}">${d.label} ${d.weekday}</option>`
-  ).join('');
-
-  document.getElementById('moveOverlay').classList.add('active');
-  document.getElementById('movePanel').style.display = 'block';
-  document.getElementById('moveTime').focus();
-}
-
-function closeMovePanel() {
-  document.getElementById('moveOverlay').classList.remove('active');
-  document.getElementById('movePanel').style.display = 'none';
-  pendingMoveIndex = null;
-}
-
-document.addEventListener('click', e => {
-  if (e.target.classList.contains('pending-move-btn')) {
-    const i = parseInt(e.target.dataset.i);
-    openMovePanel(i);
-  }
-  if (e.target.id === 'btnMoveCancel' || e.target.id === 'moveOverlay') {
-    closeMovePanel();
-  }
-  if (e.target.id === 'btnMoveConfirm') {
-    if (pendingMoveIndex === null) return;
-    const targetDate = document.getElementById('moveDay').value;
-    const targetTime = document.getElementById('moveTime').value;
-    const item = itinerary.pending[pendingMoveIndex];
-    if (!item) { closeMovePanel(); return; }
-    // 写入目标日期
-    if (!itinerary[targetDate]) itinerary[targetDate] = [];
-    itinerary[targetDate].push({
-      time: targetTime,
-      title: item.title,
-      category: item.category,
-      desc: item.desc,
-      tips: item.tips,
-    });
-    // 从待定中删除
-    itinerary.pending.splice(pendingMoveIndex, 1);
-    saveItinerary();
-    closeMovePanel();
-    render();
-  }
-});
-
-// ─── 小贴士编辑 ───
-let editingTips = { date: null, i: null, tips: [] };
-
-function openTipsPanel(date, i) {
-  const arr = date === 'pending' ? itinerary.pending : (itinerary[date] || []);
-  const item = arr[i];
-  if (!item) return;
-  editingTips = { date, i, tips: item.tips ? [...item.tips] : [] };
-  document.getElementById('tipsItemTitle').textContent = item.title;
-  document.getElementById('tipsNewInput').value = '';
-  renderTipsEditList();
-  document.getElementById('tipsOverlay').classList.add('active');
-  document.getElementById('tipsPanel').style.display = 'block';
-  document.getElementById('tipsNewInput').focus();
-}
-
-function closeTipsPanel() {
-  document.getElementById('tipsOverlay').classList.remove('active');
-  document.getElementById('tipsPanel').style.display = 'none';
-  editingTips = { date: null, i: null, tips: [] };
-}
-
-function renderTipsEditList() {
-  const list = document.getElementById('tipsEditList');
-  if (editingTips.tips.length === 0) {
-    list.innerHTML = '<div style="font-size:13px;color:#ccc;padding:4px 0">暂无小贴士</div>';
-    return;
-  }
-  list.innerHTML = editingTips.tips.map((t, i) =>
-    `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1;font-size:13px;color:var(--text)">${t}</span>
-      <button class="tips-del-btn" data-idx="${i}" style="background:none;border:none;color:#e07a5f;font-size:16px;cursor:pointer;padding:0 4px">×</button>
-    </div>`
-  ).join('');
-}
-
-document.addEventListener('click', e => {
-  // 编辑小贴士按钮
-  if (e.target.classList.contains('tips-edit-btn')) {
-    const date = e.target.dataset.date;
-    const i = parseInt(e.target.dataset.i);
-    openTipsPanel(date, i);
-  }
-  // 关闭面板
-  if (e.target.id === 'btnTipsCancel' || e.target.id === 'tipsOverlay') {
-    closeTipsPanel();
-  }
-  // 删除单条
-  if (e.target.classList.contains('tips-del-btn')) {
-    const idx = parseInt(e.target.dataset.idx);
-    editingTips.tips.splice(idx, 1);
-    renderTipsEditList();
-  }
-  // 保存
-  if (e.target.id === 'btnTipsSave') {
-    const arr = editingTips.date === 'pending' ? itinerary.pending : (itinerary[editingTips.date] || []);
-    const item = arr[editingTips.i];
-    if (item) {
-      item.tips = editingTips.tips.length ? editingTips.tips : undefined;
-      saveItinerary();
-    }
-    closeTipsPanel();
-    render();
-  }
-});
-
-// 回车添加新贴士
-document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && e.target.id === 'tipsNewInput') {
-    const val = e.target.value.trim();
-    if (!val) return;
-    editingTips.tips.push(val);
-    e.target.value = '';
-    renderTipsEditList();
-  }
-});
-
-// ─── 时间合理性检查提示 ───
-function checkSchedule(date) {
-  const items = itinerary[date];
-  if (!items || items.length < 2) return '';
-  const sorted = [...items].filter(i => i.time).sort((a, b) => a.time.localeCompare(b.time));
-  if (sorted.length < 2) return '';
-
-  const warnings = [];
-  for (let i = 1; i < sorted.length; i++) {
-    const [h1, m1] = sorted[i-1].time.split(':').map(Number);
-    const [h2, m2] = sorted[i].time.split(':').map(Number);
-    const diff = (h2 * 60 + m2) - (h1 * 60 + m1);
-    if (diff < 30) {
-      warnings.push(`⚠️ ${sorted[i-1].title} → ${sorted[i].title} 之间只隔了 ${diff} 分钟，可能太赶。`);
-    }
-  }
-  return warnings.join('<br>');
-}
-
-// ─── 初始化 ───
-render();
-</script>
+<script src="./supabase-config.js"></script>
+<script type="module" src="./app.js"></script>
 
 </body>
 </html>
