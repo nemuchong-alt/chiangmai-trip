@@ -454,7 +454,7 @@ function updateSyncUI() {
   dom.btnCloudRefresh.style.display = '';
   dom.btnCloudUpload.style.display = canEditData() ? '' : 'none';
   dom.btnRestoreLocalBackup.style.display = cloudState.localBackupAvailable ? '' : 'none';
-  dom.btnCloudUpload.textContent = cloudState.hasRemoteData ? '用当前页面覆盖云端' : '上传当前数据到云端';
+  dom.btnCloudUpload.textContent = cloudState.hasRemoteData ? '合并当前页面到云端' : '初始化云端数据';
 
   if (cloudState.loading) {
     dom.syncPill.textContent = '连接中';
@@ -472,10 +472,10 @@ function updateSyncUI() {
     dom.syncStatus.textContent = '当前显示的是共享数据，你的新增/删除会写入公开网页。';
     if (cloudState.saving) {
       dom.syncDetail.textContent = '正在同步到 Supabase……';
-    } else if (cloudState.localBackupAvailable) {
-      dom.syncDetail.textContent = '这台设备之前的本地数据已自动备份。若要并入云端，先点“恢复本机旧备份”，确认后再上传。';
     } else if (cloudState.importedUnsynced) {
-      dom.syncDetail.textContent = '你刚导入了本机备份，还没上传到云端；确认无误后点“用当前页面覆盖云端”。';
+      dom.syncDetail.textContent = '当前页面有本地恢复/导入的数据，还没合并到云端。确认无误后点“合并当前页面到云端”。';
+    } else if (cloudState.localBackupAvailable) {
+      dom.syncDetail.textContent = '这台设备之前的本地数据已自动备份。若要并入云端，先点“恢复本机旧备份”，确认后再合并到云端。';
     } else if (!cloudState.hasRemoteData) {
       dom.syncDetail.textContent = '云端还没有数据。可以先用当前页面内容做一次初始化上传。';
     } else if (!cloudState.editor) {
@@ -870,9 +870,9 @@ async function importBackup(file) {
   updateSyncUI();
 
   if (cloudState.configured && canEditData()) {
-    const shouldUpload = confirm('备份已经合并到当前页面。要不要立刻用这份结果覆盖云端共享数据？');
+    const shouldUpload = confirm('备份已经合并到当前页面。要不要立刻把这份结果合并到云端？这个操作不会删除云端已有数据。');
     if (shouldUpload) {
-      await replaceCloudWithCurrentState(true);
+      await mergeCurrentStateToCloud(false);
     }
   }
 
@@ -895,9 +895,47 @@ function restoreStoredLocalBackup() {
   updateSyncUI();
 
   if (cloudState.configured && canEditData()) {
-    alert('本机旧数据已经恢复到当前页面。请确认无误后点击“用当前页面覆盖云端”，把它并入共享数据。');
+    alert('本机旧数据已经恢复到当前页面。请确认无误后点击“合并当前页面到云端”，把它并入共享数据。');
   } else {
     alert('本机旧数据已经恢复到当前页面。登录编辑身份后，可以再上传到云端。');
+  }
+}
+
+function cloudTripSignature(row) {
+  return [
+    row.date_key || '',
+    row.time_text || '',
+    row.title || '',
+    row.category || '',
+    row.description_text || '',
+    JSON.stringify(row.tips || []),
+  ].join('||').toLowerCase();
+}
+
+function cloudPrepSignature(row) {
+  return [
+    row.category || '',
+    row.title || '',
+    row.note || '',
+  ].join('||').toLowerCase();
+}
+
+async function writeRowsSafely(tableName, rows) {
+  const withIds = rows.filter(row => row.id);
+  const withoutIds = rows.filter(row => !row.id);
+
+  if (withIds.length > 0) {
+    const response = await supabaseClient
+      .from(tableName)
+      .upsert(withIds, { onConflict: 'id' });
+    if (response.error) throw response.error;
+  }
+
+  if (withoutIds.length > 0) {
+    const response = await supabaseClient
+      .from(tableName)
+      .insert(withoutIds);
+    if (response.error) throw response.error;
   }
 }
 
@@ -1020,8 +1058,16 @@ async function refreshSessionState(session = null) {
 }
 
 async function loadCloudData(options = {}) {
-  const { silent = false } = options;
+  const { silent = false, force = false } = options;
   if (!supabaseClient) return false;
+  if (!force && cloudState.importedUnsynced) {
+    if (!silent) {
+      alert('当前页面有本地恢复/导入但还没合并到云端的数据。请先点“合并当前页面到云端”，或者确认放弃后再从云端刷新。');
+    }
+    updateSyncUI();
+    return false;
+  }
+
   if (!silent) {
     cloudState.loading = true;
     updateSyncUI();
@@ -1067,6 +1113,7 @@ async function loadCloudData(options = {}) {
       }
       itinerary = remoteItinerary;
       prepTodos = remotePrepTodos;
+      cloudState.importedUnsynced = false;
       persistLocalCache();
     }
     render();
@@ -1121,7 +1168,7 @@ async function initCloudSync() {
     });
 
     await refreshSessionState();
-    await loadCloudData({ silent: true });
+    await loadCloudData({ silent: true, force: true });
     startCloudPolling();
   } catch (error) {
     cloudState.available = false;
@@ -1168,37 +1215,30 @@ async function runCloudMutation(actionLabel, runner, onSuccess) {
   }
 }
 
-async function replaceCloudWithCurrentState(showConfirm) {
+async function mergeCurrentStateToCloud(showConfirm) {
   const confirmed = !showConfirm || confirm(cloudState.hasRemoteData
-    ? '这会用当前页面的数据覆盖 Supabase 里的共享版本。确定继续吗？'
+    ? '这会把当前页面内容合并到 Supabase，不会删除云端已有数据。确定继续吗？'
     : '云端还没有数据。要用当前页面内容初始化共享数据吗？');
   if (!confirmed) return false;
 
-  return runCloudMutation('覆盖云端数据', async () => {
+  return runCloudMutation(cloudState.hasRemoteData ? '合并到云端' : '初始化云端数据', async () => {
     const tripRows = buildCloudTripRows();
     const prepRows = buildCloudPrepRows();
 
-    const tripDelete = await supabaseClient
-      .from(CLOUD_TABLES.tripItems)
-      .delete()
-      .not('id', 'is', null);
-    if (tripDelete.error) throw tripDelete.error;
+    const [tripResponse, prepResponse] = await Promise.all([
+      supabaseClient.from(CLOUD_TABLES.tripItems).select('*'),
+      supabaseClient.from(CLOUD_TABLES.prepTodos).select('*'),
+    ]);
+    if (tripResponse.error) throw tripResponse.error;
+    if (prepResponse.error) throw prepResponse.error;
 
-    const prepDelete = await supabaseClient
-      .from(CLOUD_TABLES.prepTodos)
-      .delete()
-      .not('id', 'is', null);
-    if (prepDelete.error) throw prepDelete.error;
+    const existingTripSignatures = new Set((tripResponse.data || []).map(cloudTripSignature));
+    const existingPrepSignatures = new Set((prepResponse.data || []).map(cloudPrepSignature));
+    const safeTripRows = tripRows.filter(row => row.id || !existingTripSignatures.has(cloudTripSignature(row)));
+    const safePrepRows = prepRows.filter(row => row.id || !existingPrepSignatures.has(cloudPrepSignature(row)));
 
-    if (tripRows.length > 0) {
-      const tripInsert = await supabaseClient.from(CLOUD_TABLES.tripItems).insert(tripRows);
-      if (tripInsert.error) throw tripInsert.error;
-    }
-
-    if (prepRows.length > 0) {
-      const prepInsert = await supabaseClient.from(CLOUD_TABLES.prepTodos).insert(prepRows);
-      if (prepInsert.error) throw prepInsert.error;
-    }
+    await writeRowsSafely(CLOUD_TABLES.tripItems, safeTripRows);
+    await writeRowsSafely(CLOUD_TABLES.prepTodos, safePrepRows);
   }, () => {
     clearStoredLocalBackup();
   });
@@ -1724,11 +1764,17 @@ function bindEvents() {
 
   dom.btnCloudRefresh.addEventListener('click', () => {
     if (!cloudState.configured) return;
+    if (cloudState.importedUnsynced) {
+      const confirmed = confirm('当前页面有本地恢复/导入但还没合并到云端的数据。从云端刷新会放弃这部分本地内容。确定继续吗？');
+      if (!confirmed) return;
+      void loadCloudData({ force: true });
+      return;
+    }
     void loadCloudData();
   });
 
   dom.btnCloudUpload.addEventListener('click', () => {
-    void replaceCloudWithCurrentState(true);
+    void mergeCurrentStateToCloud(true);
   });
 
   dom.btnRestoreLocalBackup.addEventListener('click', restoreStoredLocalBackup);
