@@ -790,6 +790,46 @@ function prepSignature(category, todo) {
   ].join('||').toLowerCase();
 }
 
+function addTripItemLocally(date, item) {
+  if (!DAY_KEYS.includes(date)) return;
+  const normalized = normalizeTripItem(item);
+  const list = itinerary[date] || [];
+  const existingIndex = list.findIndex(entry =>
+    (normalized.id && entry.id === normalized.id) ||
+    tripSignature(date, entry) === tripSignature(date, normalized)
+  );
+  if (existingIndex >= 0) {
+    list[existingIndex] = { ...list[existingIndex], ...normalized };
+  } else {
+    list.push(normalized);
+  }
+  itinerary[date] = list;
+  saveItinerary();
+}
+
+function addPrepTodoLocally(category, todo) {
+  if (category !== 'toBring' && category !== 'toBuy') return;
+  const list = prepTodos[category] || [];
+  const normalized = normalizePrepTodo(todo, category, list.length);
+  const existingIndex = list.findIndex(entry =>
+    (normalized.id && entry.id === normalized.id) ||
+    prepSignature(category, entry) === prepSignature(category, normalized)
+  );
+  if (existingIndex >= 0) {
+    list[existingIndex] = { ...list[existingIndex], ...normalized };
+  } else {
+    list.push(normalized);
+  }
+  prepTodos[category] = list.map((entry, index) => ({ ...entry, sortOrder: index }));
+  savePrepTodos();
+}
+
+function revealSavedDate(date) {
+  activeDay = date;
+  render();
+  closeEditPanel();
+}
+
 function mergeSnapshotData(snapshot) {
   const incomingItinerary = snapshot && snapshot.itinerary && typeof snapshot.itinerary === 'object' ? snapshot.itinerary : {};
   const incomingPrep = snapshot && snapshot.prepTodos && typeof snapshot.prepTodos === 'object' ? snapshot.prepTodos : {};
@@ -1201,7 +1241,7 @@ async function runCloudMutation(actionLabel, runner, onSuccess) {
   try {
     await runner();
     cloudState.importedUnsynced = false;
-    await loadCloudData({ silent: true });
+    await loadCloudData({ silent: true, force: true });
     if (typeof onSuccess === 'function') onSuccess();
     render();
     return true;
@@ -1270,28 +1310,43 @@ async function saveItem() {
     }, category, (prepTodos[category] || []).length);
 
     if (!cloudState.configured) {
-      prepTodos[category].push(todo);
-      savePrepTodos();
+      addPrepTodoLocally(category, todo);
       dom.editTitle.value = '';
       dom.editDesc.value = '';
-      render();
-      openEditPanel();
+      revealSavedDate('prep');
       return;
     }
 
+    let savedTodo = todo;
     await runCloudMutation('添加行前准备', async () => {
-      const response = await supabaseClient.from(CLOUD_TABLES.prepTodos).insert([withOptionalUuidId({
-        category,
-        title: todo.title,
-        note: todo.note,
-        done: false,
-        sort_order: (prepTodos[category] || []).length,
-      }, todo.id)]);
+      const response = await supabaseClient
+        .from(CLOUD_TABLES.prepTodos)
+        .insert([withOptionalUuidId({
+          category,
+          title: todo.title,
+          note: todo.note,
+          done: false,
+          sort_order: (prepTodos[category] || []).length,
+        }, todo.id)])
+        .select('*')
+        .single();
       if (response.error) throw response.error;
+      savedTodo = response.data
+        ? normalizePrepTodo({
+          id: response.data.id,
+          category: response.data.category,
+          title: response.data.title,
+          note: response.data.note || '',
+          done: response.data.done,
+          sortOrder: response.data.sort_order,
+        }, category, (prepTodos[category] || []).length)
+        : todo;
+      addPrepTodoLocally(category, savedTodo);
     }, () => {
+      addPrepTodoLocally(category, savedTodo);
       dom.editTitle.value = '';
       dom.editDesc.value = '';
-      openEditPanel();
+      revealSavedDate('prep');
     });
     return;
   }
@@ -1311,29 +1366,44 @@ async function saveItem() {
   });
 
   if (!cloudState.configured) {
-    if (!itinerary[date]) itinerary[date] = [];
-    itinerary[date].push(item);
-    saveItinerary();
+    addTripItemLocally(date, item);
     resetEditForm();
-    render();
-    openEditPanel();
+    revealSavedDate(date);
     return;
   }
 
+  let savedItem = item;
   await runCloudMutation('添加安排', async () => {
-    const response = await supabaseClient.from(CLOUD_TABLES.tripItems).insert([withOptionalUuidId({
-      date_key: date,
-      time_text: item.time || null,
-      title: item.title,
-      category: item.category,
-      description_text: item.desc || null,
-      tips: item.tips || null,
-      dist: item.dist || null,
-    }, item.id)]);
+    const response = await supabaseClient
+      .from(CLOUD_TABLES.tripItems)
+      .insert([withOptionalUuidId({
+        date_key: date,
+        time_text: item.time || null,
+        title: item.title,
+        category: item.category,
+        description_text: item.desc || null,
+        tips: item.tips || null,
+        dist: item.dist || null,
+      }, item.id)])
+      .select('*')
+      .single();
     if (response.error) throw response.error;
+    savedItem = response.data
+      ? normalizeTripItem({
+        id: response.data.id,
+        time: response.data.time_text || '',
+        title: response.data.title,
+        category: response.data.category,
+        desc: response.data.description_text || '',
+        tips: response.data.tips,
+        dist: response.data.dist,
+      })
+      : item;
+    addTripItemLocally(date, savedItem);
   }, () => {
+    addTripItemLocally(date, savedItem);
     resetEditForm();
-    openEditPanel();
+    revealSavedDate(date);
   });
 }
 
@@ -1398,21 +1468,39 @@ async function deletePrepTodo(category, todoId) {
 async function addPrepInline(category, title) {
   const todo = normalizePrepTodo({ title, note: '', done: false }, category, (prepTodos[category] || []).length);
   if (!cloudState.configured) {
-    prepTodos[category].push(todo);
-    savePrepTodos();
+    addPrepTodoLocally(category, todo);
     render();
     return;
   }
 
+  let savedTodo = todo;
   await runCloudMutation('添加行前准备', async () => {
-    const response = await supabaseClient.from(CLOUD_TABLES.prepTodos).insert([withOptionalUuidId({
-      category,
-      title: todo.title,
-      note: '',
-      done: false,
-      sort_order: (prepTodos[category] || []).length,
-    }, todo.id)]);
+    const response = await supabaseClient
+      .from(CLOUD_TABLES.prepTodos)
+      .insert([withOptionalUuidId({
+        category,
+        title: todo.title,
+        note: '',
+        done: false,
+        sort_order: (prepTodos[category] || []).length,
+      }, todo.id)])
+      .select('*')
+      .single();
     if (response.error) throw response.error;
+    savedTodo = response.data
+      ? normalizePrepTodo({
+        id: response.data.id,
+        category: response.data.category,
+        title: response.data.title,
+        note: response.data.note || '',
+        done: response.data.done,
+        sortOrder: response.data.sort_order,
+      }, category, (prepTodos[category] || []).length)
+      : todo;
+    addPrepTodoLocally(category, savedTodo);
+  }, () => {
+    addPrepTodoLocally(category, savedTodo);
+    activeDay = 'prep';
   });
 }
 
