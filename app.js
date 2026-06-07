@@ -94,15 +94,10 @@ const STORAGE_KEYS = {
   prep: 'chiangmai_prep',
   prepRecovered: 'chiangmai_prep_recovered_v1',
   localBackup: 'chiangmai_pre_cloud_backup_v1',
-  editorEmail: 'chiangmai_editor_email_v1',
+  editPassword: 'chiangmai_edit_password_v1',
 };
 
-const CLOUD_TABLES = {
-  tripItems: 'trip_items',
-  prepTodos: 'prep_todos',
-  editors: 'trip_editors',
-};
-
+const CLOUD_API_PATH = '/api/trip-data';
 const CLOUD_POLL_MS = 30000;
 const DAY_KEYS = DAYS.filter(day => day.date !== 'prep').map(day => day.date);
 const REAL_DAY_KEYS = DAYS.filter(day => day.date !== 'prep' && day.date !== 'pending').map(day => day.date);
@@ -159,19 +154,17 @@ let selectedEditDate = DAYS[0].date;
 let activeDay = DAYS[0].date;
 let pendingMoveId = null;
 let editingTips = { date: null, itemId: null, tips: [] };
-let supabaseClient = null;
 let cloudPollTimer = null;
 
-const cloudConfig = normalizeCloudConfig(window.TRIP_SUPABASE_CONFIG);
+const cloudConfig = normalizeCloudConfig(window.TRIP_BACKEND_CONFIG);
 const cloudState = {
-  configured: Boolean(cloudConfig.url && cloudConfig.anonKey),
+  configured: true,
   loading: false,
   saving: false,
   available: false,
   hasRemoteData: false,
   editor: false,
-  userEmail: '',
-  session: null,
+  editPassword: readStoredEditPassword(),
   lastError: '',
   importedUnsynced: false,
   localBackupAvailable: false,
@@ -183,9 +176,7 @@ persistLocalCache();
 function normalizeCloudConfig(rawConfig) {
   const config = rawConfig && typeof rawConfig === 'object' ? rawConfig : {};
   return {
-    url: String(config.url || '').trim(),
-    anonKey: String(config.anonKey || '').trim(),
-    redirectTo: String(config.redirectTo || '').trim(),
+    apiBase: String(config.apiBase || '').trim().replace(/\/$/, ''),
     projectName: String(config.projectName || '清迈行程共享').trim(),
   };
 }
@@ -268,18 +259,18 @@ function makeId(prefix = '') {
   return `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function readStoredEditorEmail() {
-  return String(localStorage.getItem(STORAGE_KEYS.editorEmail) || '').trim();
+function readStoredEditPassword() {
+  return String(localStorage.getItem(STORAGE_KEYS.editPassword) || '').trim();
 }
 
-function writeStoredEditorEmail(email) {
-  const normalized = String(email || '').trim().toLowerCase();
+function writeStoredEditPassword(password) {
+  const normalized = String(password || '').trim();
   if (!normalized) return;
-  localStorage.setItem(STORAGE_KEYS.editorEmail, normalized);
+  localStorage.setItem(STORAGE_KEYS.editPassword, normalized);
 }
 
-function isValidEmail(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+function clearStoredEditPassword() {
+  localStorage.removeItem(STORAGE_KEYS.editPassword);
 }
 
 function isUuid(value) {
@@ -425,13 +416,13 @@ function migrateLegacyPrepData() {
   prepTodos.toBuy = (prepTodos.toBuy || []).map((todo, index) => normalizePrepTodo(todo, 'toBuy', index));
 }
 
-function hasCloudSession() {
-  return Boolean(cloudState.session?.user?.email);
+function hasEditPassword() {
+  return Boolean(cloudState.editPassword);
 }
 
 function canEditData() {
   if (!cloudState.configured) return true;
-  return cloudState.available && hasCloudSession();
+  return cloudState.available && cloudState.editor;
 }
 
 function updateSyncUI() {
@@ -442,7 +433,7 @@ function updateSyncUI() {
     dom.syncPill.textContent = '本地模式';
     dom.syncPill.className = 'sync-pill';
     dom.syncStatus.textContent = '当前数据只保存在这台设备的浏览器里。';
-    dom.syncDetail.textContent = '如果想双人协同，填好 Supabase 配置后，这个页面就会改成共享数据。';
+    dom.syncDetail.textContent = '如果想双人协同，部署好 Vercel 后端后，这个页面就会改成共享数据。';
     dom.btnCloudAuth.style.display = 'none';
     dom.btnCloudRefresh.style.display = 'none';
     dom.btnCloudUpload.style.display = 'none';
@@ -464,39 +455,35 @@ function updateSyncUI() {
   } else if (!cloudState.available && cloudState.lastError) {
     dom.syncPill.textContent = '连接失败';
     dom.syncPill.className = 'sync-pill sync-pill-warn';
-    dom.syncStatus.textContent = '还没成功连上 Supabase。';
+    dom.syncStatus.textContent = '还没成功连上共享后端。';
     dom.syncDetail.textContent = cloudState.lastError;
-  } else if (cloudState.available && hasCloudSession()) {
-    dom.syncPill.textContent = cloudState.editor ? '共享可编辑' : '已登录可编辑';
+  } else if (cloudState.available && cloudState.editor) {
+    dom.syncPill.textContent = '共享可编辑';
     dom.syncPill.className = 'sync-pill sync-pill-ok';
     dom.syncStatus.textContent = '当前显示的是共享数据，你的新增/删除会写入公开网页。';
     if (cloudState.saving) {
-      dom.syncDetail.textContent = '正在同步到 Supabase……';
+      dom.syncDetail.textContent = '正在通过后端同步到 Supabase……';
     } else if (cloudState.importedUnsynced) {
       dom.syncDetail.textContent = '当前页面有本地恢复/导入的数据，还没合并到云端。确认无误后点“合并当前页面到云端”。';
     } else if (cloudState.localBackupAvailable) {
       dom.syncDetail.textContent = '这台设备之前的本地数据已自动备份。若要并入云端，先点“恢复本机旧备份”，确认后再合并到云端。';
     } else if (!cloudState.hasRemoteData) {
       dom.syncDetail.textContent = '云端还没有数据。可以先用当前页面内容做一次初始化上传。';
-    } else if (!cloudState.editor) {
-      dom.syncDetail.textContent = `当前登录邮箱 ${cloudState.userEmail || '已登录邮箱'} 已进入编辑模式。页面先开放编辑入口，真正写入权限仍由 Supabase 校验。`;
     } else {
-      dom.syncDetail.textContent = `当前编辑身份：${cloudState.userEmail || '已登录编辑账号'}。可以点“新增安排”或右下角加号继续编辑。`;
+      dom.syncDetail.textContent = '已用编辑密码解锁。可以点“新增安排”或右下角加号继续编辑。';
     }
   } else if (cloudState.available) {
     dom.syncPill.textContent = '共享只读';
     dom.syncPill.className = 'sync-pill sync-pill-readonly';
     dom.syncStatus.textContent = '当前显示的是共享数据，但这个设备还不能直接编辑。';
     if (cloudState.localBackupAvailable) {
-      dom.syncDetail.textContent = '这台设备历史上的本地数据已自动保留。登录后可以点“恢复本机旧备份”，再把它并入云端。';
-    } else if (cloudState.userEmail) {
-      dom.syncDetail.textContent = `当前登录邮箱 ${cloudState.userEmail} 不在编辑名单里，需用你们的授权邮箱登录。`;
+      dom.syncDetail.textContent = '这台设备历史上的本地数据已自动保留。输入编辑密码后可以点“恢复本机旧备份”，再把它并入云端。';
     } else {
-      dom.syncDetail.textContent = '公开访客也能看共享数据；想编辑时，点“编辑登录”并用已授权邮箱收 magic link。';
+      dom.syncDetail.textContent = '公开访客只能看共享数据；想编辑时，点“输入编辑密码”。';
     }
   }
 
-  dom.btnCloudAuth.textContent = cloudState.session ? '退出编辑' : '编辑登录';
+  dom.btnCloudAuth.textContent = cloudState.editor ? '退出编辑' : '输入编辑密码';
 }
 
 function render() {
@@ -693,7 +680,7 @@ function updateEditPanelMode() {
 
 function openEditPanel() {
   if (!canEditData()) {
-    alert('当前页面是共享只读模式。请先用已授权邮箱登录，或者先完成 Supabase 配置。');
+    alert('当前页面是共享只读模式。请先输入编辑密码。');
     return;
   }
   selectedEditDate = activeDay;
@@ -718,8 +705,7 @@ function closeEditPanel() {
 }
 
 function openAuthPanel() {
-  const suggestedEmail = cloudState.userEmail || readStoredEditorEmail();
-  dom.authEmail.value = suggestedEmail;
+  dom.authEmail.value = '';
   dom.authOverlay.classList.add('active');
   dom.authPanel.classList.add('active');
   dom.authPanel.style.display = 'block';
@@ -888,7 +874,7 @@ function exportBackup() {
 async function importBackup(file) {
   if (!file) return;
   if (cloudState.configured && !canEditData()) {
-    alert('共享模式下，建议先用已授权邮箱登录后再导入，这样你可以把合并结果继续上传到云端。');
+    alert('共享模式下，建议先输入编辑密码后再导入，这样你可以把合并结果继续上传到云端。');
     dom.importDataInput.value = '';
     return;
   }
@@ -938,44 +924,6 @@ function restoreStoredLocalBackup() {
     alert('本机旧数据已经恢复到当前页面。请确认无误后点击“合并当前页面到云端”，把它并入共享数据。');
   } else {
     alert('本机旧数据已经恢复到当前页面。登录编辑身份后，可以再上传到云端。');
-  }
-}
-
-function cloudTripSignature(row) {
-  return [
-    row.date_key || '',
-    row.time_text || '',
-    row.title || '',
-    row.category || '',
-    row.description_text || '',
-    JSON.stringify(row.tips || []),
-  ].join('||').toLowerCase();
-}
-
-function cloudPrepSignature(row) {
-  return [
-    row.category || '',
-    row.title || '',
-    row.note || '',
-  ].join('||').toLowerCase();
-}
-
-async function writeRowsSafely(tableName, rows) {
-  const withIds = rows.filter(row => row.id);
-  const withoutIds = rows.filter(row => !row.id);
-
-  if (withIds.length > 0) {
-    const response = await supabaseClient
-      .from(tableName)
-      .upsert(withIds, { onConflict: 'id' });
-    if (response.error) throw response.error;
-  }
-
-  if (withoutIds.length > 0) {
-    const response = await supabaseClient
-      .from(tableName)
-      .insert(withoutIds);
-    if (response.error) throw response.error;
   }
 }
 
@@ -1052,54 +1000,75 @@ function hydratePrepFromCloud(rows) {
 function formatCloudError(error) {
   if (!error) return '';
   const text = error.message || String(error);
-  if (/relation .* does not exist/i.test(text)) {
-    return 'Supabase 里的数据表还没创建。先运行仓库里的 `supabase-setup.sql`，再刷新网页。';
+  if (/Failed to fetch|NetworkError|404/i.test(text)) {
+    return '后端 API 还没连上。请确认网站已经部署到 Vercel，并且环境变量已设置。';
   }
-  if (/invalid input syntax for type uuid/i.test(text)) {
-    return '本地旧数据的 id 格式和 Supabase 的 uuid 要求不一致。我已经补兼容修复；刷新到最新版页面后再试一次即可。';
+  if (/SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY|TRIP_EDIT_PASSWORD/i.test(text)) {
+    return text;
   }
-  if (/row-level security|permission denied|violates row-level security/i.test(text)) {
-    return '当前登录邮箱还没有通过 Supabase 的编辑权限校验。你先把这条报错截给我，我继续帮你排白名单或 RLS。';
+  if (/编辑密码|401|unauthorized/i.test(text)) {
+    return '编辑密码不正确。请重新输入你们设置在 Vercel 环境变量里的编辑密码。';
   }
   return text;
 }
 
-async function refreshEditorPermission(email) {
-  if (!email) return false;
-  const { data, error } = await supabaseClient
-    .from(CLOUD_TABLES.editors)
-    .select('email')
-    .eq('email', email.toLowerCase())
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-  return Boolean(data);
+function cloudApiUrl() {
+  return `${cloudConfig.apiBase}${CLOUD_API_PATH}`;
 }
 
-async function refreshSessionState(session = null) {
-  let currentSession = session;
-  if (!currentSession) {
-    const { data, error } = await supabaseClient.auth.getSession();
-    if (error) throw error;
-    currentSession = data.session;
+async function apiRequest(options = {}) {
+  const response = await fetch(cloudApiUrl(), {
+    method: options.method || 'GET',
+    headers: {
+      'content-type': 'application/json',
+      ...(options.headers || {}),
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  const raw = await response.text();
+  let data = null;
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch (_) {
+      data = raw;
+    }
   }
+  if (!response.ok) {
+    throw new Error(data?.error || response.statusText || '后端请求失败');
+  }
+  return data;
+}
 
-  cloudState.session = currentSession;
-  cloudState.userEmail = currentSession?.user?.email || '';
-  if (cloudState.userEmail) {
-    writeStoredEditorEmail(cloudState.userEmail);
-    closeAuthPanel();
+async function apiMutation(action, payload = {}, passwordOverride = null) {
+  const editPassword = passwordOverride === null ? cloudState.editPassword : passwordOverride;
+  return apiRequest({
+    method: 'POST',
+    headers: {
+      'x-trip-edit-password': editPassword || '',
+    },
+    body: { action, payload },
+  });
+}
+
+async function verifyStoredEditPassword() {
+  const storedPassword = readStoredEditPassword();
+  if (!storedPassword) return false;
+  try {
+    await apiMutation('checkEditPassword', {}, storedPassword);
+    cloudState.editPassword = storedPassword;
+    cloudState.editor = true;
+    return true;
+  } catch (_) {
+    clearStoredEditPassword();
+    cloudState.editPassword = '';
+    cloudState.editor = false;
+    return false;
   }
-  cloudState.editor = currentSession?.user?.email
-    ? await refreshEditorPermission(currentSession.user.email)
-    : false;
 }
 
 async function loadCloudData(options = {}) {
   const { silent = false, force = false } = options;
-  if (!supabaseClient) return false;
   if (!force && cloudState.importedUnsynced) {
     if (!silent) {
       alert('当前页面有本地恢复/导入但还没合并到云端的数据。请先点“合并当前页面到云端”，或者确认放弃后再从云端刷新。');
@@ -1114,27 +1083,13 @@ async function loadCloudData(options = {}) {
   }
 
   try {
-    const [tripResponse, prepResponse] = await Promise.all([
-      supabaseClient
-        .from(CLOUD_TABLES.tripItems)
-        .select('*')
-        .order('date_key', { ascending: true })
-        .order('time_text', { ascending: true, nullsFirst: true })
-        .order('created_at', { ascending: true }),
-      supabaseClient
-        .from(CLOUD_TABLES.prepTodos)
-        .select('*')
-        .order('category', { ascending: true })
-        .order('sort_order', { ascending: true })
-        .order('created_at', { ascending: true }),
-    ]);
-
-    if (tripResponse.error) throw tripResponse.error;
-    if (prepResponse.error) throw prepResponse.error;
+    const cloudData = await apiRequest();
+    const tripRows = cloudData.tripItems || [];
+    const prepRows = cloudData.prepTodos || [];
 
     const localSnapshotBeforeCloud = serializeSnapshot();
-    const remoteItinerary = hydrateItineraryFromCloud(tripResponse.data);
-    const remotePrepTodos = hydratePrepFromCloud(prepResponse.data);
+    const remoteItinerary = hydrateItineraryFromCloud(tripRows);
+    const remotePrepTodos = hydratePrepFromCloud(prepRows);
     const remoteSnapshot = {
       version: 1,
       itinerary: remoteItinerary,
@@ -1143,7 +1098,7 @@ async function loadCloudData(options = {}) {
 
     cloudState.available = true;
     cloudState.lastError = '';
-    cloudState.hasRemoteData = tripResponse.data.length > 0 || prepResponse.data.length > 0;
+    cloudState.hasRemoteData = tripRows.length > 0 || prepRows.length > 0;
     if (cloudState.hasRemoteData) {
       if (
         snapshotHasContent(localSnapshotBeforeCloud) &&
@@ -1172,43 +1127,22 @@ async function loadCloudData(options = {}) {
 function startCloudPolling() {
   if (cloudPollTimer) return;
   cloudPollTimer = window.setInterval(() => {
-    if (!supabaseClient || cloudState.loading || cloudState.saving) return;
+    if (cloudState.loading || cloudState.saving) return;
     void loadCloudData({ silent: true });
   }, CLOUD_POLL_MS);
 }
 
 async function initCloudSync() {
   updateSyncUI();
-  if (!cloudState.configured) return;
 
   cloudState.loading = true;
   updateSyncUI();
 
   try {
-    const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm');
-    supabaseClient = createClient(cloudConfig.url, cloudConfig.anonKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-      },
-    });
-
-    supabaseClient.auth.onAuthStateChange((_, session) => {
-      void (async () => {
-        try {
-          await refreshSessionState(session);
-          render();
-          updateSyncUI();
-        } catch (error) {
-          cloudState.lastError = formatCloudError(error);
-          updateSyncUI();
-        }
-      })();
-    });
-
-    await refreshSessionState();
     await loadCloudData({ silent: true, force: true });
+    await verifyStoredEditPassword();
+    render();
+    updateSyncUI();
     startCloudPolling();
   } catch (error) {
     cloudState.available = false;
@@ -1221,11 +1155,11 @@ async function initCloudSync() {
 async function requireCloudEdit(actionLabel) {
   if (!cloudState.configured) return true;
   if (!cloudState.available) {
-    alert(`现在还没连上共享数据，暂时不能${actionLabel}。先把 Supabase 配置和数据表跑通，再试一次。`);
+    alert(`现在还没连上共享数据，暂时不能${actionLabel}。请确认 Vercel 后端和 Supabase 环境变量已经配置好。`);
     return false;
   }
-  if (!hasCloudSession()) {
-    alert(`当前页面是共享只读模式，不能${actionLabel}。请用已授权邮箱登录。`);
+  if (!cloudState.editor) {
+    alert(`当前页面是共享只读模式，不能${actionLabel}。请先输入编辑密码。`);
     return false;
   }
   return true;
@@ -1264,21 +1198,7 @@ async function mergeCurrentStateToCloud(showConfirm) {
   return runCloudMutation(cloudState.hasRemoteData ? '合并到云端' : '初始化云端数据', async () => {
     const tripRows = buildCloudTripRows();
     const prepRows = buildCloudPrepRows();
-
-    const [tripResponse, prepResponse] = await Promise.all([
-      supabaseClient.from(CLOUD_TABLES.tripItems).select('*'),
-      supabaseClient.from(CLOUD_TABLES.prepTodos).select('*'),
-    ]);
-    if (tripResponse.error) throw tripResponse.error;
-    if (prepResponse.error) throw prepResponse.error;
-
-    const existingTripSignatures = new Set((tripResponse.data || []).map(cloudTripSignature));
-    const existingPrepSignatures = new Set((prepResponse.data || []).map(cloudPrepSignature));
-    const safeTripRows = tripRows.filter(row => row.id || !existingTripSignatures.has(cloudTripSignature(row)));
-    const safePrepRows = prepRows.filter(row => row.id || !existingPrepSignatures.has(cloudPrepSignature(row)));
-
-    await writeRowsSafely(CLOUD_TABLES.tripItems, safeTripRows);
-    await writeRowsSafely(CLOUD_TABLES.prepTodos, safePrepRows);
+    await apiMutation('mergeCurrentState', { tripRows, prepRows });
   }, () => {
     clearStoredLocalBackup();
   });
@@ -1319,26 +1239,23 @@ async function saveItem() {
 
     let savedTodo = todo;
     await runCloudMutation('添加行前准备', async () => {
-      const response = await supabaseClient
-        .from(CLOUD_TABLES.prepTodos)
-        .insert([withOptionalUuidId({
+      const response = await apiMutation('insertPrepTodo', {
+        row: withOptionalUuidId({
           category,
           title: todo.title,
           note: todo.note,
           done: false,
           sort_order: (prepTodos[category] || []).length,
-        }, todo.id)])
-        .select('*')
-        .single();
-      if (response.error) throw response.error;
-      savedTodo = response.data
+        }, todo.id),
+      });
+      savedTodo = response.row
         ? normalizePrepTodo({
-          id: response.data.id,
-          category: response.data.category,
-          title: response.data.title,
-          note: response.data.note || '',
-          done: response.data.done,
-          sortOrder: response.data.sort_order,
+          id: response.row.id,
+          category: response.row.category,
+          title: response.row.title,
+          note: response.row.note || '',
+          done: response.row.done,
+          sortOrder: response.row.sort_order,
         }, category, (prepTodos[category] || []).length)
         : todo;
       addPrepTodoLocally(category, savedTodo);
@@ -1374,9 +1291,8 @@ async function saveItem() {
 
   let savedItem = item;
   await runCloudMutation('添加安排', async () => {
-    const response = await supabaseClient
-      .from(CLOUD_TABLES.tripItems)
-      .insert([withOptionalUuidId({
+    const response = await apiMutation('insertTripItem', {
+      row: withOptionalUuidId({
         date_key: date,
         time_text: item.time || null,
         title: item.title,
@@ -1384,19 +1300,17 @@ async function saveItem() {
         description_text: item.desc || null,
         tips: item.tips || null,
         dist: item.dist || null,
-      }, item.id)])
-      .select('*')
-      .single();
-    if (response.error) throw response.error;
-    savedItem = response.data
+      }, item.id),
+    });
+    savedItem = response.row
       ? normalizeTripItem({
-        id: response.data.id,
-        time: response.data.time_text || '',
-        title: response.data.title,
-        category: response.data.category,
-        desc: response.data.description_text || '',
-        tips: response.data.tips,
-        dist: response.data.dist,
+        id: response.row.id,
+        time: response.row.time_text || '',
+        title: response.row.title,
+        category: response.row.category,
+        desc: response.row.description_text || '',
+        tips: response.row.tips,
+        dist: response.row.dist,
       })
       : item;
     addTripItemLocally(date, savedItem);
@@ -1418,11 +1332,7 @@ async function deleteTripItem(date, itemId) {
   }
 
   await runCloudMutation('删除安排', async () => {
-    const response = await supabaseClient
-      .from(CLOUD_TABLES.tripItems)
-      .delete()
-      .eq('id', itemId);
-    if (response.error) throw response.error;
+    await apiMutation('deleteTripItem', { id: itemId });
   });
 }
 
@@ -1439,11 +1349,7 @@ async function togglePrepDone(category, todoId) {
   }
 
   await runCloudMutation('更新行前准备', async () => {
-    const response = await supabaseClient
-      .from(CLOUD_TABLES.prepTodos)
-      .update({ done: nextDone })
-      .eq('id', todoId);
-    if (response.error) throw response.error;
+    await apiMutation('updatePrepTodo', { id: todoId, values: { done: nextDone } });
   });
 }
 
@@ -1457,11 +1363,7 @@ async function deletePrepTodo(category, todoId) {
   }
 
   await runCloudMutation('删除行前准备', async () => {
-    const response = await supabaseClient
-      .from(CLOUD_TABLES.prepTodos)
-      .delete()
-      .eq('id', todoId);
-    if (response.error) throw response.error;
+    await apiMutation('deletePrepTodo', { id: todoId });
   });
 }
 
@@ -1475,26 +1377,23 @@ async function addPrepInline(category, title) {
 
   let savedTodo = todo;
   await runCloudMutation('添加行前准备', async () => {
-    const response = await supabaseClient
-      .from(CLOUD_TABLES.prepTodos)
-      .insert([withOptionalUuidId({
+    const response = await apiMutation('insertPrepTodo', {
+      row: withOptionalUuidId({
         category,
         title: todo.title,
         note: '',
         done: false,
         sort_order: (prepTodos[category] || []).length,
-      }, todo.id)])
-      .select('*')
-      .single();
-    if (response.error) throw response.error;
-    savedTodo = response.data
+      }, todo.id),
+    });
+    savedTodo = response.row
       ? normalizePrepTodo({
-        id: response.data.id,
-        category: response.data.category,
-        title: response.data.title,
-        note: response.data.note || '',
-        done: response.data.done,
-        sortOrder: response.data.sort_order,
+        id: response.row.id,
+        category: response.row.category,
+        title: response.row.title,
+        note: response.row.note || '',
+        done: response.row.done,
+        sortOrder: response.row.sort_order,
       }, category, (prepTodos[category] || []).length)
       : todo;
     addPrepTodoLocally(category, savedTodo);
@@ -1523,15 +1422,12 @@ async function reorderPrepTodos(category, fromId, toId) {
 
   render();
   await runCloudMutation('调整行前准备顺序', async () => {
-    const updates = prepTodos[category].map((todo, index) =>
-      supabaseClient
-        .from(CLOUD_TABLES.prepTodos)
-        .update({ sort_order: index })
-        .eq('id', todo.id)
-    );
-    const results = await Promise.all(updates);
-    const firstError = results.find(result => result.error)?.error;
-    if (firstError) throw firstError;
+    await apiMutation('reorderPrepTodos', {
+      updates: prepTodos[category].map((todo, index) => ({
+        id: todo.id,
+        sort_order: index,
+      })),
+    });
   });
 }
 
@@ -1577,11 +1473,10 @@ async function movePendingItem() {
   }
 
   await runCloudMutation('迁移待定安排', async () => {
-    const response = await supabaseClient
-      .from(CLOUD_TABLES.tripItems)
-      .update({ date_key: targetDate, time_text: targetTime || null })
-      .eq('id', pendingMoveId);
-    if (response.error) throw response.error;
+    await apiMutation('updateTripItem', {
+      id: pendingMoveId,
+      values: { date_key: targetDate, time_text: targetTime || null },
+    });
   }, () => {
     closeMovePanel();
   });
@@ -1640,34 +1535,19 @@ async function saveTips() {
   }
 
   await runCloudMutation('保存小贴士', async () => {
-    const response = await supabaseClient
-      .from(CLOUD_TABLES.tripItems)
-      .update({ tips: nextTips || null })
-      .eq('id', editingTips.itemId);
-    if (response.error) throw response.error;
+    await apiMutation('updateTripItem', {
+      id: editingTips.itemId,
+      values: { tips: nextTips || null },
+    });
   }, () => {
     closeTipsPanel();
   });
 }
 
 async function handleCloudAuth() {
-  if (!cloudState.configured) {
-    alert('先在 `supabase-config.js` 里填好项目地址和 anon key，页面才会进入共享模式。');
-    return;
-  }
-  if (!supabaseClient) {
-    alert('Supabase SDK 还没加载完成，稍等一下再试。');
-    return;
-  }
-
-  if (cloudState.session) {
-    const { error } = await supabaseClient.auth.signOut();
-    if (error) {
-      alert(`退出失败：${formatCloudError(error)}`);
-      return;
-    }
-    cloudState.session = null;
-    cloudState.userEmail = '';
+  if (cloudState.editor) {
+    clearStoredEditPassword();
+    cloudState.editPassword = '';
     cloudState.editor = false;
     render();
     updateSyncUI();
@@ -1678,39 +1558,30 @@ async function handleCloudAuth() {
 }
 
 async function submitCloudAuth() {
-  const email = dom.authEmail.value.trim().toLowerCase();
-  if (!email) {
+  const password = dom.authEmail.value.trim();
+  if (!password) {
     dom.authEmail.focus();
-    return;
-  }
-  if (!isValidEmail(email)) {
-    alert('请输入完整邮箱，例如 nemuchong@gmail.com。');
-    dom.authEmail.focus();
-    dom.authEmail.select();
     return;
   }
 
   dom.btnAuthSend.disabled = true;
-  dom.btnAuthSend.textContent = '发送中...';
+  dom.btnAuthSend.textContent = '验证中...';
 
   try {
-    const redirectTo = cloudConfig.redirectTo || window.location.href.split('#')[0];
-    const { error } = await supabaseClient.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: redirectTo,
-      },
-    });
-    if (error) {
-      alert(`发送登录邮件失败：${formatCloudError(error)}`);
-      return;
-    }
-    writeStoredEditorEmail(email);
+    await apiMutation('checkEditPassword', {}, password);
+    writeStoredEditPassword(password);
+    cloudState.editPassword = password;
+    cloudState.editor = true;
     closeAuthPanel();
-    alert('登录链接已经发到邮箱。你在手机上点开 magic link 之后，这个网页就会切到可编辑状态。');
+    render();
+    updateSyncUI();
+  } catch (error) {
+    alert(`进入编辑失败：${formatCloudError(error)}`);
+    dom.authEmail.focus();
+    dom.authEmail.select();
   } finally {
     dom.btnAuthSend.disabled = false;
-    dom.btnAuthSend.textContent = '发送登录邮件';
+    dom.btnAuthSend.textContent = '进入编辑';
   }
 }
 

@@ -708,14 +708,14 @@
   <div id="authOverlay" class="edit-overlay"></div>
   <div id="authPanel" class="edit-panel" style="display:none;padding-top:20px">
     <h3 style="margin-bottom:8px">编辑登录</h3>
-    <p class="auth-note">输入已授权邮箱，我们会发一封 magic link 到这个邮箱。建议直接填完整邮箱，例如 nemuchong@gmail.com。</p>
+    <p class="auth-note">输入你们的共享编辑密码。通过后，这台设备就可以新增、删除和修改共享行程。</p>
     <div class="form-group">
-      <label for="authEmail">邮箱</label>
-      <input type="email" id="authEmail" inputmode="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="name@example.com">
+      <label for="authEmail">编辑密码</label>
+      <input type="password" id="authEmail" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="go" placeholder="输入编辑密码">
     </div>
     <div class="btn-row">
       <button class="btn btn-secondary" id="btnAuthCancel" type="button">取消</button>
-      <button class="btn btn-primary" id="btnAuthSend" type="button">发送登录邮件</button>
+      <button class="btn btn-primary" id="btnAuthSend" type="button">进入编辑</button>
     </div>
   </div>
 
