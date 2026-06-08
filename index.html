@@ -243,6 +243,19 @@
     font-family: inherit;
     flex-shrink: 0;
   }
+  .time-edit-btn {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent);
+    background: var(--accent-light);
+    border: 1px solid #efc7a8;
+    border-radius: 8px;
+    padding: 1px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    flex-shrink: 0;
+  }
   .tips-card ul {
     font-size: 13px;
     color: #4a7a5a;
@@ -732,7 +745,7 @@
 <!-- 迁移弹窗 -->
 <div id="moveOverlay" class="edit-overlay"></div>
 <div id="movePanel" class="edit-panel" style="display:none;padding-top:20px">
-  <h3 style="margin-bottom:14px">安排到日期</h3>
+  <h3 id="movePanelTitle" style="margin-bottom:14px">安排到日期</h3>
   <div style="font-size:13px;color:#888;margin-bottom:14px" id="moveItemTitle"></div>
   <div class="form-group">
     <label>日期</label>

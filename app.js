@@ -127,6 +127,7 @@ const dom = {
   btnAuthSend: document.getElementById('btnAuthSend'),
   moveOverlay: document.getElementById('moveOverlay'),
   movePanel: document.getElementById('movePanel'),
+  movePanelTitle: document.getElementById('movePanelTitle'),
   moveItemTitle: document.getElementById('moveItemTitle'),
   moveDay: document.getElementById('moveDay'),
   moveTime: document.getElementById('moveTime'),
@@ -152,7 +153,7 @@ let prepTodos = loadPrepTodos();
 let currentEditCat = 'info';
 let selectedEditDate = DAYS[0].date;
 let activeDay = DAYS[0].date;
-let pendingMoveId = null;
+let moveContext = { mode: null, date: null, itemId: null };
 let editingTips = { date: null, itemId: null, tips: [] };
 let cloudPollTimer = null;
 
@@ -614,6 +615,7 @@ function renderDayContent(day, items, canEdit) {
         <div class="item-header">
           <span class="item-time">${item.time || '—'}</span>
           <span class="item-title">${item.title}</span>
+          ${canEdit ? `<button class="time-edit-btn" data-date="${day.date}" data-id="${item.id}">改时间</button>` : ''}
         </div>
         ${item.desc ? `<div class="item-desc">${item.desc.replace(/\n/g, '<br>')}</div>` : ''}
         <span class="item-tag ${cat.tag}">${cat.label}</span>
@@ -1434,13 +1436,30 @@ async function reorderPrepTodos(category, fromId, toId) {
 function openMovePanel(itemId) {
   const item = findTripItem('pending', itemId);
   if (!item) return;
-  pendingMoveId = itemId;
+  moveContext = { mode: 'movePending', date: 'pending', itemId };
+  dom.movePanelTitle.textContent = '安排到日期';
   dom.moveItemTitle.textContent = item.title;
   dom.moveTime.value = item.time || '09:00';
   dom.moveDay.innerHTML = REAL_DAY_KEYS.map(date => {
     const day = DAYS.find(entry => entry.date === date);
     return `<option value="${date}">${day.label} ${day.weekday}</option>`;
   }).join('');
+  dom.moveDay.closest('.form-group').style.display = '';
+  document.getElementById('btnMoveConfirm').textContent = '确定迁移';
+  dom.moveOverlay.classList.add('active');
+  dom.movePanel.style.display = 'block';
+  dom.moveTime.focus();
+}
+
+function openTimePanel(date, itemId) {
+  const item = findTripItem(date, itemId);
+  if (!item || date === 'pending') return;
+  moveContext = { mode: 'adjustTime', date, itemId };
+  dom.movePanelTitle.textContent = '调整时间';
+  dom.moveItemTitle.textContent = item.title;
+  dom.moveTime.value = item.time || '09:00';
+  dom.moveDay.closest('.form-group').style.display = 'none';
+  document.getElementById('btnMoveConfirm').textContent = '保存时间';
   dom.moveOverlay.classList.add('active');
   dom.movePanel.style.display = 'block';
   dom.moveTime.focus();
@@ -1449,21 +1468,43 @@ function openMovePanel(itemId) {
 function closeMovePanel() {
   dom.moveOverlay.classList.remove('active');
   dom.movePanel.style.display = 'none';
-  pendingMoveId = null;
+  dom.moveDay.closest('.form-group').style.display = '';
+  document.getElementById('btnMoveConfirm').textContent = '确定迁移';
+  moveContext = { mode: null, date: null, itemId: null };
 }
 
-async function movePendingItem() {
-  if (!pendingMoveId) return;
+async function submitMovePanel() {
+  if (!moveContext.itemId) return;
   const targetDate = dom.moveDay.value;
   const targetTime = dom.moveTime.value;
-  const item = findTripItem('pending', pendingMoveId);
+  const item = findTripItem(moveContext.date, moveContext.itemId);
   if (!item) {
     closeMovePanel();
     return;
   }
 
+  if (moveContext.mode === 'adjustTime') {
+    if (!cloudState.configured) {
+      item.time = targetTime;
+      saveItinerary();
+      closeMovePanel();
+      render();
+      return;
+    }
+
+    await runCloudMutation('调整时间', async () => {
+      await apiMutation('updateTripItem', {
+        id: moveContext.itemId,
+        values: { time_text: targetTime || null },
+      });
+    }, () => {
+      closeMovePanel();
+    });
+    return;
+  }
+
   if (!cloudState.configured) {
-    itinerary.pending = (itinerary.pending || []).filter(entry => entry.id !== pendingMoveId);
+    itinerary.pending = (itinerary.pending || []).filter(entry => entry.id !== moveContext.itemId);
     if (!itinerary[targetDate]) itinerary[targetDate] = [];
     itinerary[targetDate].push({ ...item, time: targetTime });
     saveItinerary();
@@ -1474,7 +1515,7 @@ async function movePendingItem() {
 
   await runCloudMutation('迁移待定安排', async () => {
     await apiMutation('updateTripItem', {
-      id: pendingMoveId,
+      id: moveContext.itemId,
       values: { date_key: targetDate, time_text: targetTime || null },
     });
   }, () => {
@@ -1620,12 +1661,16 @@ function bindEvents() {
       openMovePanel(event.target.dataset.id);
     }
 
+    if (event.target.classList.contains('time-edit-btn')) {
+      openTimePanel(event.target.dataset.date, event.target.dataset.id);
+    }
+
     if (event.target.id === 'btnMoveCancel' || event.target.id === 'moveOverlay') {
       closeMovePanel();
     }
 
     if (event.target.id === 'btnMoveConfirm') {
-      void movePendingItem();
+      void submitMovePanel();
     }
 
     if (event.target.classList.contains('tips-edit-btn')) {
